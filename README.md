@@ -2,6 +2,17 @@
 
 React demo for the wavesurfer.js Record plugin with browser audio recording, MP3 export, live speech-to-text transcription, and offline chunk persistence.
 
+Live demo: https://wavesurfer-record.pages.dev
+
+## Video demo
+
+https://github.com/user-attachments/assets/5afb48ab-0fac-48ca-ac63-5d7bd95087a9
+
+## Code walkthrough
+
+https://github.com/user-attachments/assets/cfb5be98-b2de-4a67-9caf-a214801cd29d
+
+
 ## Setup
 
 ```sh
