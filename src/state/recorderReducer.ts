@@ -1,3 +1,4 @@
+/** Defines recorder state, supported actions, and the reducer that drives UI updates. */
 import type { ChunkMetadata, QueueStats, RecordingSession, RecordingStatus, TranscriptResult } from '../types'
 import { DEFAULT_MP3_EXPORT_SETTINGS, type Mp3BitRate, type Mp3ChannelCount, type Mp3ExportSettings } from '../services/mp3EncoderCore'
 

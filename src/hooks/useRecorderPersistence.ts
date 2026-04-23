@@ -1,3 +1,4 @@
+/** Coordinates session reads, writes, reconciliation, and queue statistics with persistence. */
 import { type Dispatch, useCallback, useEffect, useRef } from 'react'
 import {
   deleteSession,

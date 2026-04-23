@@ -1,3 +1,4 @@
+/** Defines MP3 export settings and converts decoded PCM audio into an MP3 blob. */
 import { createMp3Encoder } from 'wasm-media-encoders'
 
 export type Mp3BitRate = 16 | 24 | 32 | 40 | 48 | 64 | 80 | 96 | 112 | 128 | 160 | 192 | 224 | 256 | 320

@@ -21,4 +21,3 @@ It is intentionally focused on unresolved items. CSS module declaration drift is
 | Segmented control accessibility | `src/components/ui/SegmentedControl.tsx` | The radiogroup-style control still needs a full ARIA keyboard-interaction review. |
 | Async fire-and-forget auditing | `src/App.tsx`, `src/components/RecorderView.tsx`, `src/hooks/useRecorderApp.ts` | `void`-discarded async calls should keep being audited so operational errors are surfaced through reducer state or an error boundary. |
 | Test realism | `src/test/App.test.tsx`, `src/test/RecorderView.test.tsx` | The MediaRecorder stub is minimal and some UI interaction tests still use `fireEvent`, so they may miss browser-realistic interaction failures. |
-| CI coverage | `.github/workflows/ci.yml` | CI still does not run `yarn lint`. |

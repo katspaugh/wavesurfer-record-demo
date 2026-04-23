@@ -1,3 +1,4 @@
+/** Persists recording metadata, chunks, and finalized blobs in IndexedDB. */
 import type { ChunkMetadata, QueueStats, RecordingSession, StoredChunk } from '../types'
 
 function toChunkMetadata(chunk: StoredChunk): ChunkMetadata {

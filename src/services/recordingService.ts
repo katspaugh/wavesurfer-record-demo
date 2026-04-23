@@ -1,3 +1,4 @@
+/** Creates persisted audio chunk records from MediaRecorder output. */
 import type { StoredChunk } from '../types'
 
 export function createStoredChunk({

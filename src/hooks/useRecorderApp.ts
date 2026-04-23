@@ -1,3 +1,4 @@
+/** Orchestrates recorder state, session lifecycle, waveform control, and export actions. */
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { MAX_RECORDING_MS } from '../lib/audio'
 import {
