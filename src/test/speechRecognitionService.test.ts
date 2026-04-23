@@ -92,6 +92,20 @@ describe('speechRecognitionService', () => {
     expect(segments.at(-1)?.endMs).toBe(12_000)
   })
 
+  it('clamps short transcript windows to the provided end time', () => {
+    const segments = createTranscriptSegments({
+      confidence: 0.81,
+      endMs: 120,
+      idFactory: () => 'segment-1',
+      startMs: 0,
+      text: 'brief phrase',
+    })
+
+    expect(segments).toHaveLength(1)
+    expect(segments[0]?.startMs).toBe(0)
+    expect(segments[0]?.endMs).toBe(120)
+  })
+
   it('keeps the phrase duration floor short enough for brief pauses', () => {
     expect(MIN_TRANSCRIPT_PHRASE_DURATION_MS).toBe(650)
   })

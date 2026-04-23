@@ -6,6 +6,7 @@ React demo for the wavesurfer.js Record plugin with browser audio recording, MP3
 
 ```sh
 yarn install
+yarn css-types
 yarn dev
 ```
 
@@ -16,6 +17,8 @@ Production build:
 ```sh
 yarn build
 ```
+
+If you edit `*.module.css`, run `yarn css-types` to refresh the committed declaration files. `yarn typecheck` and `yarn build` fail when those generated typings drift.
 
 ## Architecture
 

@@ -127,7 +127,7 @@ function WavePanel() {
           <Button
             aria-pressed={isPreviewPlaying}
             onClick={() => void togglePreview()}
-            disabled={!recordedBlob || isExporting || status !== 'stopped'}
+            disabled={!recordedBlob || isExporting || (status !== 'stopped' && status !== 'paused')}
           >
             <Icon name={isPreviewPlaying ? 'pause' : 'play'} />
             {isPreviewPlaying ? 'Pause Preview' : 'Play Preview'}

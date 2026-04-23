@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearChunks,
   deleteChunksForSession,
@@ -112,6 +112,26 @@ describe('chunkDb', () => {
     await deleteSession('s1')
 
     expect(await getSessionBlob('s1')).toBeNull()
+    expect((await listSessions()).map((item) => item.id)).toEqual([])
+  })
+
+  it('rejects write operations that abort after the request succeeds', async () => {
+    const originalPut = IDBObjectStore.prototype.put
+    const putSpy = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+      this: IDBObjectStore,
+      value: unknown,
+      key?: IDBValidKey,
+    ) {
+      const request = key === undefined ? originalPut.call(this, value) : originalPut.call(this, value, key)
+      request.addEventListener('success', () => {
+        this.transaction.abort()
+      })
+      return request
+    })
+
+    await expect(saveSession(session('aborted'))).rejects.toMatchObject({ name: 'AbortError' })
+    putSpy.mockRestore()
+
     expect((await listSessions()).map((item) => item.id)).toEqual([])
   })
 })

@@ -10,6 +10,10 @@ export const CHUNK_TIMESLICE_MS = 10_000
 export const MAX_EXPORT_DURATION_MS = 2 * 60 * 60 * 1000
 
 export function getSupportedRecordingMimeType() {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+    return ''
+  }
+
   return PREFERRED_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) ?? ''
 }
 

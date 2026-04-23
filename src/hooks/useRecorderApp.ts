@@ -294,7 +294,8 @@ export function useRecorderApp() {
 
   const togglePreview = useCallback(async () => {
     const wavesurfer = wavesurferRef.current
-    if (!wavesurfer || !state.recordedUrl || state.status !== 'stopped') return
+    const canPreview = state.status === 'stopped' || state.status === 'paused'
+    if (!wavesurfer || !state.recordedUrl || !canPreview) return
 
     if (wavesurfer.isPlaying()) {
       wavesurfer.pause()

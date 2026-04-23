@@ -89,4 +89,19 @@ describe('RecorderView', () => {
 
     expect(startRecording).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps preview playback enabled for paused sessions with a recording', () => {
+    render(
+      <RecorderContext.Provider value={createRecorderContextValue({
+        isFinalized: false,
+        status: 'paused',
+        statusLabel: 'paused',
+      })}
+      >
+        <RecorderView />
+      </RecorderContext.Provider>,
+    )
+
+    expect(screen.getByRole('button', { name: /Play Preview/u }).hasAttribute('disabled')).toBe(false)
+  })
 })

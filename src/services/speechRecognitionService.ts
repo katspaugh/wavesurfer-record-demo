@@ -94,15 +94,18 @@ export function createTranscriptSegments({
 
   const boundedEndMs = Math.max(0, endMs)
   const boundedStartMs = Math.max(0, Math.min(startMs, boundedEndMs - MIN_TRANSCRIPT_SEGMENT_DURATION_MS))
-  const durationMs = Math.max(MIN_TRANSCRIPT_SEGMENT_DURATION_MS, boundedEndMs - boundedStartMs)
-  const durationSegmentCount = Math.ceil(durationMs / MAX_TRANSCRIPT_SEGMENT_DURATION_MS)
-  const wordSegmentCount = Math.ceil(words.length / MAX_TRANSCRIPT_SEGMENT_WORDS)
+  const durationMs = Math.max(0, boundedEndMs - boundedStartMs)
+  const hasShortWindow = durationMs < MIN_TRANSCRIPT_SEGMENT_DURATION_MS
+  const durationSegmentCount = hasShortWindow ? 1 : Math.ceil(durationMs / MAX_TRANSCRIPT_SEGMENT_DURATION_MS)
+  const wordSegmentCount = hasShortWindow ? 1 : Math.ceil(words.length / MAX_TRANSCRIPT_SEGMENT_WORDS)
   const segmentCount = Math.max(1, Math.min(words.length, Math.max(durationSegmentCount, wordSegmentCount)))
-  const segmentDurationMs = Math.max(
-    MIN_TRANSCRIPT_SEGMENT_DURATION_MS,
-    Math.min(MAX_TRANSCRIPT_SEGMENT_DURATION_MS, durationMs / segmentCount),
-  )
-  const segmentStartMs = Math.max(0, boundedEndMs - segmentDurationMs * segmentCount)
+  const segmentDurationMs = hasShortWindow
+    ? durationMs
+    : Math.max(
+        MIN_TRANSCRIPT_SEGMENT_DURATION_MS,
+        Math.min(MAX_TRANSCRIPT_SEGMENT_DURATION_MS, durationMs / segmentCount),
+      )
+  const segmentStartMs = hasShortWindow ? boundedStartMs : Math.max(0, boundedEndMs - segmentDurationMs * segmentCount)
   const wordsPerSegment = Math.ceil(words.length / segmentCount)
 
   return Array.from({ length: segmentCount }, (_, index) => {
@@ -115,7 +118,12 @@ export function createTranscriptSegments({
       text: segmentWords.join(' '),
       confidence,
       startMs: Math.round(start),
-      endMs: Math.round(Math.max(start + MIN_TRANSCRIPT_SEGMENT_DURATION_MS, end)),
+      endMs: Math.round(
+        Math.min(
+          boundedEndMs,
+          Math.max(hasShortWindow ? end : start + MIN_TRANSCRIPT_SEGMENT_DURATION_MS, end),
+        ),
+      ),
     }
   }).filter((segment) => segment.text)
 }

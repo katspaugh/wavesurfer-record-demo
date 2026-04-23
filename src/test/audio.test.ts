@@ -26,6 +26,12 @@ describe('audio formatting', () => {
     expect(getSupportedRecordingMimeType()).toBe('audio/webm')
   })
 
+  it('returns an empty mime type when support detection is unavailable', () => {
+    vi.stubGlobal('MediaRecorder', class MediaRecorder {})
+
+    expect(getSupportedRecordingMimeType()).toBe('')
+  })
+
   it('downloads blobs through an attached temporary anchor', () => {
     const click = vi.fn()
     const remove = vi.fn()
