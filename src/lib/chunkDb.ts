@@ -143,15 +143,17 @@ export async function getQueueStats(): Promise<QueueStats> {
   const database = await openDatabase()
 
   return new Promise<QueueStats>((resolve, reject) => {
-    const transaction = database.transaction(CHUNKS_STORE, 'readonly')
-    const store = transaction.objectStore(CHUNKS_STORE)
-    const cursorRequest = store.openCursor()
+    const transaction = database.transaction([CHUNKS_STORE, SESSION_BLOBS_STORE], 'readonly')
+    const chunksStore = transaction.objectStore(CHUNKS_STORE)
+    const sessionBlobsStore = transaction.objectStore(SESSION_BLOBS_STORE)
+    const chunkCursorRequest = chunksStore.openCursor()
+    const blobCursorRequest = sessionBlobsStore.openCursor()
     const sessions = new Set<string>()
     let chunks = 0
     let bytes = 0
 
-    cursorRequest.onsuccess = () => {
-      const cursor = cursorRequest.result
+    chunkCursorRequest.onsuccess = () => {
+      const cursor = chunkCursorRequest.result
       if (!cursor) return
       const value = cursor.value as StoredChunk
       chunks += 1
@@ -159,7 +161,18 @@ export async function getQueueStats(): Promise<QueueStats> {
       sessions.add(value.sessionId)
       cursor.continue()
     }
-    cursorRequest.onerror = () => reject(cursorRequest.error)
+    chunkCursorRequest.onerror = () => reject(chunkCursorRequest.error)
+
+    blobCursorRequest.onsuccess = () => {
+      const cursor = blobCursorRequest.result
+      if (!cursor) return
+      const value = cursor.value as SessionBlobRecord
+      bytes += value.blob.size
+      sessions.add(value.sessionId)
+      cursor.continue()
+    }
+    blobCursorRequest.onerror = () => reject(blobCursorRequest.error)
+
     transaction.oncomplete = () => resolve({ chunks, bytes, sessions: sessions.size })
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
