@@ -1,0 +1,149 @@
+.appShell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.sessionLibrary {
+  min-height: calc(100vh - 64px);
+  padding: 28px;
+  border: 1px solid rgba(23, 33, 29, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 250, 241, 0.97), rgba(233, 226, 211, 0.94)),
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(23, 33, 29, 0.04) 31px 32px);
+  box-shadow: var(--shadow);
+}
+
+.libraryHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.newSessionButton {
+  min-width: 178px;
+}
+
+.eyebrow {
+  margin: 0 0 7px;
+  color: var(--clay);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-family: Georgia, Cambria, Times New Roman, serif;
+  font-size: clamp(2.3rem, 6vw, 5.5rem);
+  line-height: 0.94;
+}
+
+.sessionList {
+  display: grid;
+  gap: 10px;
+}
+
+.sessionCard {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.sessionOpen {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) 104px 94px;
+  justify-content: stretch;
+  min-width: 0;
+  min-height: 70px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.sessionOpen > span {
+  min-width: 0;
+}
+
+.sessionOpen > span:nth-child(3),
+.sessionOpen > span:nth-child(4) {
+  text-align: right;
+}
+
+.sessionOpen strong,
+.sessionOpen small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionOpen small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.sessionStatus {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.sessionStatus[data-status='draft'] {
+  background: var(--amber);
+}
+
+.sessionStatus[data-status='recording'] {
+  background: var(--clay);
+}
+
+.sessionStatus[data-status='paused'] {
+  background: var(--blue);
+}
+
+.sessionStatus[data-status='stopped'] {
+  background: var(--green);
+}
+
+@media (max-width: 900px) {
+  .appShell {
+    width: min(100% - 20px, 720px);
+    padding: 10px 0;
+  }
+
+  .sessionLibrary {
+    padding: 18px;
+  }
+
+  .sessionOpen {
+    grid-template-columns: auto minmax(120px, 1fr) 82px;
+  }
+
+  .sessionOpen > span:nth-child(4) {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .libraryHero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sessionCard {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionOpen {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .sessionOpen > span:nth-child(3) {
+    display: none;
+  }
+}

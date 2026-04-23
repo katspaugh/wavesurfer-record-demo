@@ -1,0 +1,8 @@
+.toolPanel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(23, 33, 29, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.8);
+  box-shadow: 0 14px 34px rgba(42, 49, 43, 0.08);
+}

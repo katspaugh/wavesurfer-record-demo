@@ -1,0 +1,27 @@
+.selectField {
+  display: grid;
+  gap: 8px;
+}
+
+.selectField > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.selectInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(23, 33, 29, 0.14);
+  border-radius: 8px;
+  background: #fffdf7;
+  color: var(--ink);
+  font: 800 0.9rem/1 Avenir Next, Avenir, Montserrat, Verdana, sans-serif;
+}
+
+.selectInput:disabled {
+  color: #9c998f;
+  background: #eee8dc;
+}

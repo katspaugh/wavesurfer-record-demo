@@ -1,0 +1,71 @@
+.appShell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.recorderStage {
+  position: relative;
+  overflow: hidden;
+  padding: 28px;
+  border: 1px solid rgba(23, 33, 29, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 250, 241, 0.96), rgba(237, 230, 213, 0.92)),
+    repeating-linear-gradient(90deg, transparent 0 19px, rgba(23, 33, 29, 0.04) 19px 20px);
+  box-shadow: var(--shadow);
+}
+
+.topbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 7px;
+  color: var(--clay);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-family: Georgia, Cambria, Times New Roman, serif;
+  font-size: clamp(2.3rem, 6vw, 5.5rem);
+  line-height: 0.94;
+}
+
+.errorBanner {
+  position: relative;
+  z-index: 1;
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(185, 77, 52, 0.12);
+  color: #7f2f22;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .appShell {
+    width: min(100% - 20px, 720px);
+    padding: 10px 0;
+  }
+
+  .recorderStage {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
