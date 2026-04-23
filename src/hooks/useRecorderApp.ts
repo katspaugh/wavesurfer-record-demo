@@ -18,6 +18,7 @@ import {
   persistFinalizedSession,
   prepareSessionForFreshRecording,
 } from '../services/sessionRecordingService'
+import { getRecordingStartErrorMessage, requestMicrophoneAccess } from '../services/recordingService'
 import { initialRecorderState, recorderReducer, type MicProcessingOption } from '../state/recorderReducer'
 import type { RecordingSession } from '../types'
 import { useLiveTranscription } from './useLiveTranscription'
@@ -47,7 +48,10 @@ export function useRecorderApp() {
     elapsedMs: state.elapsedMs,
   })
 
-  const canRecord = useMemo(() => Boolean(navigator.mediaDevices && window.MediaRecorder), [])
+  const canRecord = useMemo(
+    () => typeof MediaRecorder !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia),
+    [],
+  )
   const statusLabel = state.status === 'idle' ? 'ready' : state.status
   const remainingMs = Math.max(0, MAX_RECORDING_MS - state.elapsedMs)
   const isFinalized = state.status === 'stopped' && Boolean(state.recordedBlob)
@@ -231,14 +235,26 @@ export function useRecorderApp() {
 
   const beginRecording = useCallback(async (mode: 'fresh' | 'resume') => {
     const recorder = recorderRef.current
-    if (!recorder || !canRecord || !activeSessionRef.current) return
+    if (!recorder || !activeSessionRef.current) return
+    if (!canRecord) {
+      dispatch({ type: 'set-error', error: 'This browser does not support microphone recording.' })
+      return
+    }
     if (activeSessionRef.current.status === 'stopped') {
       dispatch({ type: 'set-error', error: 'This session is finalized. Start a new session for another recording.' })
       return
     }
 
+    const currentSession = activeSessionRef.current
+    const microphoneConstraints = {
+      autoGainControl: state.micProcessing.autoGainControl,
+      echoCancellation: state.micProcessing.echoCancellation,
+      noiseSuppression: state.micProcessing.noiseSuppression,
+    }
+    const previousStatus = state.status
+
     try {
-      const currentSession = activeSessionRef.current
+      await requestMicrophoneAccess(microphoneConstraints)
       sessionIdRef.current = currentSession.id
       dispatch({ type: 'set-recorded-blob', blob: null })
       wavesurferRef.current?.pause()
@@ -260,16 +276,12 @@ export function useRecorderApp() {
       } else {
         chunkSequenceRef.current = currentSession.chunkCount
       }
-      await recorder.startRecording({
-        echoCancellation: state.micProcessing.echoCancellation,
-        noiseSuppression: state.micProcessing.noiseSuppression,
-        autoGainControl: state.micProcessing.autoGainControl,
-      })
+      await recorder.startRecording(microphoneConstraints)
     } catch (recordingError) {
-      dispatch({ type: 'set-error', error: recordingError instanceof Error ? recordingError.message : 'Microphone access failed.' })
-      dispatch({ type: 'set-status', status: 'idle' })
+      dispatch({ type: 'set-error', error: getRecordingStartErrorMessage(recordingError) })
+      dispatch({ type: 'set-status', status: previousStatus })
     }
-  }, [activeSessionRef, canRecord, chunkSequenceRef, recorderRef, renderRegions, replaceRecordedUrl, sessionIdRef, setTranscriptBaseline, state.micProcessing, wavesurferRef])
+  }, [activeSessionRef, canRecord, chunkSequenceRef, recorderRef, renderRegions, replaceRecordedUrl, sessionIdRef, setTranscriptBaseline, state.micProcessing, state.status, wavesurferRef])
 
   const startRecording = useCallback(async () => {
     await beginRecording('fresh')

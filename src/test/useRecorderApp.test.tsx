@@ -13,7 +13,9 @@ beforeEach(async () => {
   })
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
-    value: {},
+    value: {
+      getUserMedia: vi.fn(),
+    },
   })
   window.history.replaceState(null, '', '/')
   await clearChunks()
