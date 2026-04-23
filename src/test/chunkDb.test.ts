@@ -67,12 +67,13 @@ describe('chunkDb', () => {
     expect((await listChunks()).map((item) => item.id)).toEqual(['a'])
   })
 
-  it('reports queue aggregates across all chunks', async () => {
+  it('reports cache aggregates across chunks and finalized blobs', async () => {
     await saveChunk(chunk('a', 's1', 0, 100))
     await saveChunk(chunk('b', 's1', 1, 250))
     await saveChunk(chunk('c', 's2', 0, 50))
+    await saveSessionBlob('s3', new Blob([new Uint8Array(25)], { type: 'audio/webm' }))
 
-    expect(await getQueueStats()).toEqual({ chunks: 3, bytes: 400, sessions: 2 })
+    expect(await getQueueStats()).toEqual({ chunks: 3, bytes: 425, sessions: 3 })
   })
 
   it('lists sessions newest-first by updatedAt', async () => {

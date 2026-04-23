@@ -135,10 +135,6 @@
   box-shadow: 0 18px 36px rgba(42, 49, 43, 0.16);
 }
 
-.waveRecordButton:hover:not(:disabled) {
-  transform: translate(-50%, calc(-50% - 1px));
-}
-
 .previewStrip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -5,6 +5,7 @@ import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { CHUNK_TIMESLICE_MS, MAX_RECORDING_MS, getSupportedRecordingMimeType } from '../lib/audio'
 import { saveChunk } from '../lib/chunkDb'
+import { createTranscriptRegionColor } from '../lib/transcriptRegionColor'
 import { createStoredChunk } from '../services/recordingService'
 import type { RecorderAction } from '../state/recorderReducer'
 import type { RecordingSession, RecordingStatus, TranscriptSegment } from '../types'
@@ -71,7 +72,7 @@ export function useWaveSurferRecorder({
       content.style.textOverflow = 'ellipsis'
       content.style.whiteSpace = 'nowrap'
       regions.addRegion({
-        color: 'rgba(185, 77, 52, 0.18)',
+        color: createTranscriptRegionColor(segment.id),
         content,
         drag: false,
         end: segment.endMs / 1000,

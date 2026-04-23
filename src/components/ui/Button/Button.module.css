@@ -12,14 +12,13 @@
   gap: 10px;
   font: 700 0.92rem/1 Avenir Next, Avenir, Montserrat, Verdana, sans-serif;
   transition:
-    transform 160ms ease,
     border-color 160ms ease,
     background 160ms ease;
 }
 
 .button:hover:not(:disabled) {
-  transform: translateY(-1px);
   border-color: rgba(31, 92, 69, 0.55);
+  background: #f7f4ea;
 }
 
 .button:disabled {
@@ -42,4 +41,8 @@
   background: var(--green);
   color: #fffdf7;
   border-color: var(--green-deep);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #306d53;
 }

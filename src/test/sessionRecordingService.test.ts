@@ -113,9 +113,9 @@ describe('sessionRecordingService', () => {
     })
     expect(result.session.transcript?.text).toBe('hello world')
     expect(result.cacheState.chunks).toEqual([])
-    expect(result.cacheState.queueStats).toEqual({ bytes: 0, chunks: 0, sessions: 0 })
+    expect(result.cacheState.queueStats).toEqual({ bytes: blob.size, chunks: 0, sessions: 1 })
     expect(await listChunkMetadataForSession('s1')).toEqual([])
-    expect(await getQueueStats()).toEqual({ bytes: 0, chunks: 0, sessions: 0 })
+    expect(await getQueueStats()).toEqual({ bytes: blob.size, chunks: 0, sessions: 1 })
     expect(await (await getSessionBlob('s1'))?.text()).toBe('final')
   })
 
