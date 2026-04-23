@@ -5,7 +5,7 @@ import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { CHUNK_TIMESLICE_MS, MAX_RECORDING_MS, getSupportedRecordingMimeType } from '../lib/audio'
 import { saveChunk } from '../lib/chunkDb'
-import { createRandomTranscriptRegionColor } from '../lib/transcriptRegionColor'
+import { createTranscriptRegionColor } from '../lib/transcriptRegionColor'
 import { createStoredChunk } from '../services/recordingService'
 import type { RecorderAction } from '../state/recorderReducer'
 import type { RecordingSession, RecordingStatus, TranscriptSegment } from '../types'
@@ -53,19 +53,9 @@ export function useWaveSurferRecorder({
   const wavesurferRef = useRef<WaveSurfer | null>(null)
   const recorderRef = useRef<ReturnType<typeof RecordPlugin.create> | null>(null)
   const regionsRef = useRef<ReturnType<typeof RegionsPlugin.create> | null>(null)
-  const regionColorsRef = useRef<Map<string, string>>(new Map())
   const renderRegions = useCallback((segments: TranscriptSegment[]) => {
     const regions = regionsRef.current
     if (!regions) return
-
-    const nextRegionColors = new Map<string, string>()
-    for (const segment of segments) {
-      nextRegionColors.set(
-        segment.id,
-        regionColorsRef.current.get(segment.id) ?? createRandomTranscriptRegionColor(),
-      )
-    }
-    regionColorsRef.current = nextRegionColors
 
     regions.clearRegions()
     for (const segment of segments) {
@@ -82,7 +72,7 @@ export function useWaveSurferRecorder({
       content.style.textOverflow = 'ellipsis'
       content.style.whiteSpace = 'nowrap'
       regions.addRegion({
-        color: regionColorsRef.current.get(segment.id) ?? createRandomTranscriptRegionColor(),
+        color: createTranscriptRegionColor(segment.id),
         content,
         drag: false,
         end: segment.endMs / 1000,
@@ -209,7 +199,6 @@ export function useWaveSurferRecorder({
       wavesurferRef.current = null
       recorderRef.current = null
       regionsRef.current = null
-      regionColorsRef.current.clear()
     }
   }, [
     activeSessionRef,
