@@ -29,6 +29,51 @@ flowchart TD
     Worker --> Encoder[wasm-media-encoders]
 ```
 
+## Hook and service wiring
+
+```mermaid
+flowchart LR
+    AppHook[useRecorderApp]
+    State[recorderReducer]
+    PersistHook[useRecorderPersistence]
+    WaveHook[useWaveSurferRecorder]
+    ExportHook[useMp3Export]
+    TranscriptionHook[useLiveTranscription]
+
+    SessionService[sessionService]
+    SessionRecordingService[sessionRecordingService]
+    AudioExportService[audioExportService]
+    SpeechService[speechRecognitionService]
+    ChunkDb[chunkDb]
+    AudioLib[audio.ts]
+    RecordingService[recordingService]
+    Worker[mp3Encoder.worker.ts]
+
+    AppHook --> State
+    AppHook --> PersistHook
+    AppHook --> WaveHook
+    AppHook --> ExportHook
+    AppHook --> TranscriptionHook
+    AppHook --> SessionService
+    AppHook --> SessionRecordingService
+    AppHook --> ChunkDb
+
+    PersistHook --> ChunkDb
+    PersistHook --> SessionService
+
+    WaveHook --> RecordingService
+    WaveHook --> ChunkDb
+    WaveHook --> AudioLib
+
+    ExportHook --> AudioExportService
+    AudioExportService --> AudioLib
+    AudioExportService --> Worker
+
+    TranscriptionHook --> SpeechService
+```
+
+`useRecorderApp` is the coordinator: it composes the other hooks, bridges reducer actions to persistence and waveform side effects, and calls session services for session creation, reopening, reset, and finalization.
+
 ## Runtime overview
 
 1. `src/main.tsx` mounts the app inside `StrictMode` and wraps it in `ErrorBoundary`.
@@ -57,6 +102,30 @@ flowchart TD
 3. Each `record-data-available` event is converted into a stored chunk and written into the `chunks` object store. Queue statistics and per-session chunk metadata are refreshed after each successful write.
 4. When recording ends, the app rebuilds a complete blob from cached chunks, stores the finalized blob in `session_blobs`, clears the temporary chunk queue for that session, and updates session metadata to `stopped`.
 5. Reopening a session reloads either the finalized blob or a reconstructed in-progress blob and redraws transcript regions on the waveform.
+
+## User flow (happy path)
+
+```mermaid
+flowchart TD
+    Open[Open app] --> Library[Session library view]
+    Library --> Create[Create new session]
+    Create --> Recorder[Recorder view]
+    Recorder --> Start[Start recording]
+    Start --> Capture[Waveform updates + chunks saved + live transcription]
+    Capture --> Pause{Pause?}
+    Pause -->|Yes| Resume[Resume recording]
+    Resume --> Capture
+    Pause -->|No| Finish[Finish recording]
+    Finish --> Finalize[Rebuild final blob and save session]
+    Finalize --> Preview[Preview waveform and audio]
+    Preview --> Export{Export MP3?}
+    Export -->|Yes| Encode[Decode audio and encode in worker]
+    Encode --> Download[Download MP3]
+    Export -->|No| Sessions[Return to session library]
+    Download --> Sessions
+    Sessions --> Reopen[Reopen saved session later]
+    Reopen --> Preview
+```
 
 ## Data storage model
 
