@@ -1,0 +1,62 @@
+.toggleOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid rgba(23, 33, 29, 0.12);
+  border-radius: 999px;
+  background: #fffdf7;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.toggleOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.toggleOption span {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #c9c1b3;
+  transition: background 160ms ease;
+}
+
+.toggleOption span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fffdf7;
+  transition: transform 160ms ease;
+}
+
+.toggleOption input:checked + span {
+  background: var(--green);
+}
+
+.toggleOption input:checked + span::after {
+  transform: translateX(14px);
+}
+
+.toggleOption input:focus-visible + span {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.toggleOption:has(input:disabled) {
+  color: #9c998f;
+  background: #eee8dc;
+}

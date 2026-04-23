@@ -1,0 +1,35 @@
+.segmentedControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(23, 33, 29, 0.14);
+  border-radius: 8px;
+  background: #e7e0d2;
+}
+
+.segmentButton {
+  min-width: 0;
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: 800 0.84rem/1 Avenir Next, Avenir, Montserrat, Verdana, sans-serif;
+}
+
+.segmentButton:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.segmentButton:disabled {
+  cursor: not-allowed;
+  color: #9c998f;
+}
+
+.activeSegment {
+  background: #fffdf7;
+  color: var(--green-deep);
+  box-shadow: 0 5px 12px rgba(42, 49, 43, 0.1);
+}
