@@ -1,0 +1,38 @@
+:root {
+  color-scheme: light;
+  font-family: Avenir Next, Avenir, Montserrat, Verdana, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ink: #17211d;
+  --muted: #65736b;
+  --paper: #f4f1ea;
+  --panel: #fffaf1;
+  --line: #d8d0c1;
+  --green: #1f5c45;
+  --green-deep: #12362b;
+  --clay: #b94d34;
+  --amber: #d5a94f;
+  --blue: #355f83;
+  --shadow: 0 22px 70px rgba(42, 49, 43, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, rgba(23, 33, 29, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(23, 33, 29, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 18% 18%, rgba(213, 169, 79, 0.2), transparent 30%),
+    var(--paper);
+  background-size:
+    44px 44px,
+    44px 44px,
+    auto,
+    auto;
+  color: var(--ink);
+}
