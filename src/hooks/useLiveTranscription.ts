@@ -1,3 +1,4 @@
+/** Manages browser speech recognition and syncs transcript state back into the recorder flow. */
 import { type Dispatch, useCallback, useEffect, useRef } from 'react'
 import {
   createTranscriptSegments,

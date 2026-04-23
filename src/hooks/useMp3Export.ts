@@ -1,3 +1,4 @@
+/** Exposes recorder actions for configuring and running MP3 exports from the current take. */
 import { type Dispatch, type RefObject, useCallback } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import { downloadBlob } from '../lib/audio'

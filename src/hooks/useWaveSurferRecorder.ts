@@ -1,3 +1,4 @@
+/** Wires WaveSurfer recording, chunk persistence, playback loading, and transcript regions. */
 import { type Dispatch, type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'

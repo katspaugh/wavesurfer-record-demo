@@ -1,3 +1,4 @@
+/** Provides session naming, patching, query-string, and async write queue helpers. */
 import type { ChunkMetadata, RecordingSession } from '../types'
 
 export const SESSION_QUERY_KEY = 'session'

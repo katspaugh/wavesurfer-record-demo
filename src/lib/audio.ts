@@ -1,3 +1,4 @@
+/** Centralizes audio format limits, display helpers, downloads, and blob decoding. */
 const PREFERRED_MIME_TYPES = [
   'audio/webm;codecs=opus',
   'audio/webm',

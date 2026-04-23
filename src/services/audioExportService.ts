@@ -1,3 +1,4 @@
+/** Handles MP3 export limits, audio decoding, and worker-based blob encoding. */
 import { MAX_EXPORT_DURATION_MS, decodeBlobToPcm } from '../lib/audio'
 import type { Mp3ExportSettings } from './mp3EncoderCore'
 

@@ -1,3 +1,4 @@
+/** Rebuilds, resets, and finalizes session recordings against IndexedDB-backed storage. */
 import {
   deleteChunksForSession,
   deleteSessionBlob,

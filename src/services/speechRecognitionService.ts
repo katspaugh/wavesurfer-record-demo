@@ -1,3 +1,4 @@
+/** Wraps browser speech-recognition types, transcript shaping, and error mapping helpers. */
 import type { TranscriptResult, TranscriptSegment } from '../types'
 
 export const MAX_TRANSCRIPT_SEGMENT_DURATION_MS = 4_500
