@@ -16,9 +16,9 @@ https://github.com/user-attachments/assets/cfb5be98-b2de-4a67-9caf-a214801cd29d
 ## Setup
 
 ```sh
-yarn install
-yarn css-types
-yarn dev
+make install
+make css-types
+make run
 ```
 
 The dev server runs at `http://127.0.0.1:5173`.
@@ -26,12 +26,14 @@ The dev server runs at `http://127.0.0.1:5173`.
 Production build:
 
 ```sh
-yarn build
+make build
 ```
 
-If you edit `*.module.css`, run `yarn css-types` to refresh the committed declaration files. `yarn typecheck` and `yarn build` fail when those generated typings drift.
+If you edit `*.module.css`, run `make css-types` to refresh the committed declaration files. `make typecheck` and `make build` fail when those generated typings drift.
 
 ## Architecture
+
+For a code-oriented overview of the runtime flow, module boundaries, storage, and tooling, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 - `wavesurfer.js` + Record plugin renders the live microphone waveform and owns recording state, including pause, resume, finish, and progress events.
 - The app opens on a recording session library. Users can start a new session or reopen an existing session; the recorder view is shown only after a session is selected.
