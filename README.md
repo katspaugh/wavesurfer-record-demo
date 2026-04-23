@@ -5,8 +5,8 @@ React demo for the wavesurfer.js Record plugin with browser audio recording, MP3
 ## Setup
 
 ```sh
-make install
-make dev
+yarn install
+yarn dev
 ```
 
 The dev server runs at `http://127.0.0.1:5173`.
@@ -14,7 +14,7 @@ The dev server runs at `http://127.0.0.1:5173`.
 Production build:
 
 ```sh
-make build
+yarn build
 ```
 
 ## Architecture
