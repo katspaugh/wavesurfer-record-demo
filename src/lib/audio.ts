@@ -49,30 +49,3 @@ export function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export async function decodeBlobToPcm(blob: Blob) {
-  const AudioContextCtor = window.AudioContext || window.webkitAudioContext
-  const context = new AudioContextCtor()
-
-  try {
-    const arrayBuffer = await blob.arrayBuffer()
-    const audioBuffer = await context.decodeAudioData(arrayBuffer)
-    const channelCount = Math.min(audioBuffer.numberOfChannels, 2)
-    const channels = Array.from({ length: channelCount }, (_, index) => {
-      return new Float32Array(audioBuffer.getChannelData(index))
-    })
-
-    return {
-      channels,
-      sampleRate: audioBuffer.sampleRate,
-      duration: audioBuffer.duration,
-    }
-  } finally {
-    await context.close()
-  }
-}
-
-declare global {
-  interface Window {
-    webkitAudioContext?: typeof AudioContext
-  }
-}

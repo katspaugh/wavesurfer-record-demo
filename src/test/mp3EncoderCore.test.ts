@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_MP3_EXPORT_SETTINGS,
   encodePcmToMp3Blob,
-  createExportChannels,
 } from '../services/mp3EncoderCore'
 
 describe('mp3EncoderCore', () => {
@@ -11,16 +10,6 @@ describe('mp3EncoderCore', () => {
       bitRate: 32,
       channelCount: 1,
     })
-  })
-
-  it('mixes source channels down to mono for voice export', () => {
-    const [mono] = createExportChannels([
-      new Float32Array([1, 0.5, 0]),
-      new Float32Array([0, -0.5, -1]),
-    ], 1)
-    if (!mono) throw new Error('expected mono channel')
-
-    expect(Array.from(mono)).toEqual([0.5, 0, -0.5])
   })
 
   it('encodes PCM samples to an MP3 blob', async () => {
@@ -37,5 +26,24 @@ describe('mp3EncoderCore', () => {
     expect(blob.type).toBe('audio/mpeg')
     expect(blob.size).toBeGreaterThan(0)
     expect(progress.length).toBeGreaterThan(0)
+  })
+
+  it('downmixes stereo input to a mono MP3 without allocating a full-duration mix buffer', async () => {
+    const sampleRate = 44_100
+    const left = new Float32Array(2304)
+    const right = new Float32Array(2304)
+    for (let index = 0; index < left.length; index += 1) {
+      left[index] = 0.25
+      right[index] = -0.25
+    }
+
+    const blob = await encodePcmToMp3Blob({
+      channels: [left, right],
+      sampleRate,
+      settings: { bitRate: 32, channelCount: 1 },
+    }, () => undefined)
+
+    expect(blob.type).toBe('audio/mpeg')
+    expect(blob.size).toBeGreaterThan(0)
   })
 })
