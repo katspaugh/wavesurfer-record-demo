@@ -21,18 +21,6 @@ class FakeWorker {
   })
 }
 
-const leftChannel = new Float32Array([0.1, 0.2, 0.3, 0.4])
-const rightChannel = new Float32Array([-0.1, -0.2, -0.3, -0.4])
-
-class FakeAudioContext {
-  close = vi.fn(async () => undefined)
-  decodeAudioData = vi.fn(async () => ({
-    getChannelData: (index: number) => [leftChannel, rightChannel][index] ?? leftChannel,
-    numberOfChannels: 2,
-    sampleRate: 44_100,
-  }))
-}
-
 afterEach(() => {
   FakeWorker.current = null
   vi.unstubAllGlobals()
@@ -54,24 +42,7 @@ describe('audioExportService', () => {
     expect(workerSpy).not.toHaveBeenCalled()
   })
 
-  it('rejects when the estimated PCM budget exceeds the device memory allowance', async () => {
-    vi.stubGlobal('navigator', { deviceMemory: 2 })
-    const workerSpy = vi.fn()
-    vi.stubGlobal('Worker', workerSpy)
-
-    // 2 hour worst-case estimate comfortably exceeds 12% of 2 GB.
-    await expect(encodeMp3Blob(
-      new Blob(['audio']),
-      { bitRate: 32, channelCount: 1 },
-      2 * 60 * 60 * 1000,
-      () => undefined,
-    )).rejects.toThrow(/too long to export on this device/)
-
-    expect(workerSpy).not.toHaveBeenCalled()
-  })
-
-  it('decodes on the main thread, transfers PCM to the worker, and terminates after a successful encode', async () => {
-    vi.stubGlobal('AudioContext', FakeAudioContext)
+  it('sends the recorded blob to the worker and terminates after a successful encode', async () => {
     vi.stubGlobal('Worker', FakeWorker)
     const onProgress = vi.fn()
     const blobBytes = new Uint8Array([1, 2, 3, 4])
@@ -88,15 +59,13 @@ describe('audioExportService', () => {
     const lastCall = FakeWorker.current?.postMessage.mock.calls[0]
     if (!lastCall) throw new Error('worker was not invoked')
     const [payload, transferList] = lastCall as unknown as [
-      { channels: Float32Array[]; sampleRate: number; settings: unknown },
-      Transferable[],
+      { recordedBlob: Blob; settings: unknown },
+      Transferable[] | undefined,
     ]
-    expect(payload).toMatchObject({ sampleRate: 44_100, settings: { bitRate: 32, channelCount: 1 } })
-    expect(payload.channels).toEqual([leftChannel, rightChannel])
-    expect(transferList).toEqual([leftChannel.buffer, rightChannel.buffer])
+    expect(payload).toMatchObject({ recordedBlob, settings: { bitRate: 32, channelCount: 1 } })
+    expect(transferList).toBeUndefined()
     expect(FakeWorker.current?.terminate).toHaveBeenCalledTimes(1)
-    expect(onProgress).toHaveBeenCalledWith(0.06)
-    expect(onProgress).toHaveBeenCalledWith(0.14)
-    expect(onProgress).toHaveBeenCalledWith(0.14 + 0.5 * 0.84)
+    expect(onProgress).toHaveBeenCalledWith(0.04)
+    expect(onProgress).toHaveBeenCalledWith(0.04 + 0.5 * 0.94)
   })
 })
