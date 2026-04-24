@@ -26,7 +26,7 @@ flowchart TD
     Transcription --> SpeechAPI[SpeechRecognition API]
     ExportHook --> ExportService[audioExportService]
     ExportService --> Worker[mp3Encoder.worker.ts]
-    Worker --> Encoder[wasm-media-encoders]
+    Worker --> Mediabunny[Mediabunny + MP3 encoder]
 ```
 
 ## Hook and service wiring
@@ -92,7 +92,7 @@ flowchart LR
 | State | Define the reducer, actions, and defaults for recorder UI state | `src/state/recorderReducer.ts` |
 | Persistence | Store sessions, chunks, queue stats, and finalized blobs in IndexedDB | `src/lib/chunkDb.ts`, `src/hooks/useRecorderPersistence.ts` |
 | Recording services | Shape sessions, rebuild blobs from cached chunks, and prepare/finalize recordings | `src/services/sessionService.ts`, `src/services/sessionRecordingService.ts`, `src/services/recordingService.ts` |
-| Export pipeline | Decode recorded audio and hand PCM buffers to the MP3 encoder worker | `src/services/audioExportService.ts`, `src/services/mp3EncoderCore.ts`, `src/workers/mp3Encoder.worker.ts` |
+| Export pipeline | Convert the recorded blob to MP3 in a worker-backed Mediabunny pipeline | `src/services/audioExportService.ts`, `src/services/mp3EncoderCore.ts`, `src/workers/mp3Encoder.worker.ts` |
 | Transcription | Integrate browser speech recognition and turn phrases into timed waveform regions | `src/hooks/useLiveTranscription.ts`, `src/services/speechRecognitionService.ts` |
 
 ## Recording and persistence flow
@@ -139,7 +139,7 @@ This split lets the app recover interrupted sessions, show queue statistics, and
 
 ## Export and transcription details
 
-- MP3 export is deliberately offloaded to `src/workers/mp3Encoder.worker.ts`. The main thread decodes the recorded blob to PCM, then transfers channel buffers to the worker for encoding with `wasm-media-encoders`.
+- MP3 export is deliberately offloaded to `src/workers/mp3Encoder.worker.ts`. The worker uses Mediabunny to read the recorded blob and `@mediabunny/mp3-encoder` to write an MP3 without using Web Audio on the main thread.
 - Live transcription depends on the browser `SpeechRecognition` / `webkitSpeechRecognition` API. Transcript segments are persisted on the session and rendered as non-editable waveform regions.
 - Transcript timing is estimated from recorder elapsed time, so regions are useful for navigation and context rather than word-perfect alignment.
 
