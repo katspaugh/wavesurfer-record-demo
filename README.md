@@ -42,7 +42,7 @@ For a code-oriented overview of the runtime flow, module boundaries, storage, an
 - The UI exposes microphone processing constraints before recording starts: echo cancellation, noise filtering/noise suppression, and auto gain control. They are enabled by default and passed into `startRecording()`.
 - `record-data-available` is enabled with a 10 second `mediaRecorderTimeslice`; each blob chunk is stored in IndexedDB with an id, session id, sequence number, timestamp, MIME type, and size while the take is in progress.
 - The session library summary shows global cache totals. Inside the recorder, the Offline cache widget is scoped to the active session and clearing it removes only that session's cached chunks.
-- MP3 export sends the final browser recording to a Web Worker, where Mediabunny reads the media and `@mediabunny/mp3-encoder` writes the MP3. Encoding progress is streamed back to the UI. Export is capped at 2 hours for this demo.
+- MP3 export sends the final browser recording to a Web Worker, where Mediabunny reads the media and `@mediabunny/mp3-encoder` writes the MP3. Encoding progress is streamed back to the UI. This is a browser-codec PoC, so export support varies by recording format and browser.
 - When a take is finalized, the completed session blob becomes the durable local artifact and the temporary per-session chunk cache is released to avoid duplicate storage.
 - Live transcription starts with recording and uses the browser's `SpeechRecognition` / `webkitSpeechRecognition` API. Interim results update the transcript display; finalized segments are appended, persisted on the active session, and drawn as timed regions over the waveform.
 
@@ -55,7 +55,8 @@ For a code-oriented overview of the runtime flow, module boundaries, storage, an
 
 ## Limitations
 
-- MP3 export is intentionally client-side for this demo. It depends on browser media decoding support through Mediabunny/WebCodecs plus the WASM LAME MP3 encoder; a production system should use streaming or server-side transcoding for long recordings and broader codec coverage.
+- MP3 export is intentionally client-side for this demo. Mediabunny can parse the container in the worker, but compressed audio decode still depends on browser/WebCodecs support for the recorded codec, usually WebM/Opus. Browsers that cannot decode the recorded format through that path will fail export even if playback works elsewhere in the app.
+- The Mediabunny MP3 path is not a production transcoding backend. Large recordings can still run into browser memory, CPU, worker, or codec-support limits, and the demo keeps an export-duration guard in code. A production system should use streaming or server-side transcoding for long recordings and broader codec coverage.
 - Offline support stores in-progress chunks locally and displays the queue. It does not yet include a background sync uploader or reassembly UI for partially completed sessions.
 - Live transcription depends on `SpeechRecognition`, which is only present in Chromium-family browsers today. Safari and Firefox will report the feature as unavailable. Region timing is estimated from recorder elapsed time because the browser API does not expose word-level timestamps. A real service integration would add upload retry policy, authentication, transcript status polling, and precise word timing on top.
 - Browser microphone permissions and supported recording MIME types vary by browser.
