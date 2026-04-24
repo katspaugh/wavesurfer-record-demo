@@ -21,11 +21,6 @@ export type EncodePcmRequest = {
   settings: Mp3ExportSettings
 }
 
-export type DecodeAndEncodeRequest = {
-  arrayBuffer: ArrayBuffer
-  settings: Mp3ExportSettings
-}
-
 const BLOCK_SIZE = 1152
 
 function copyChunkToArrayBuffer(chunk: Uint8Array) {
@@ -95,38 +90,4 @@ export async function encodePcmToMp3Blob(
   }
 
   return new Blob(mp3Chunks, { type: 'audio/mpeg' })
-}
-
-export async function decodeAndEncodeMp3Blob(
-  { arrayBuffer, settings }: DecodeAndEncodeRequest,
-  onProgress: (progress: number) => void,
-) {
-  const OfflineAudioContextCtor =
-    (globalThis as { OfflineAudioContext?: typeof OfflineAudioContext }).OfflineAudioContext ??
-    (globalThis as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext
-  if (!OfflineAudioContextCtor) {
-    throw new Error('This environment cannot decode audio for MP3 export.')
-  }
-
-  const decodeContext = new OfflineAudioContextCtor(1, 1, 44_100)
-  let audioBuffer: AudioBuffer
-  try {
-    audioBuffer = await decodeContext.decodeAudioData(arrayBuffer)
-  } catch {
-    throw new Error('The recorded audio could not be decoded for MP3 export.')
-  }
-
-  onProgress(0.12)
-
-  const channelCount = Math.min(audioBuffer.numberOfChannels, 2)
-  // getChannelData returns views into AudioBuffer-owned storage — feed them directly, no copy.
-  const channels: Float32Array[] = []
-  for (let index = 0; index < channelCount; index += 1) {
-    channels.push(audioBuffer.getChannelData(index))
-  }
-
-  return encodePcmToMp3Blob(
-    { channels, sampleRate: audioBuffer.sampleRate, settings },
-    (innerProgress) => onProgress(0.12 + innerProgress * 0.86),
-  )
 }

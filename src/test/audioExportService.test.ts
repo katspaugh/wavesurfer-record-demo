@@ -21,6 +21,18 @@ class FakeWorker {
   })
 }
 
+const leftChannel = new Float32Array([0.1, 0.2, 0.3, 0.4])
+const rightChannel = new Float32Array([-0.1, -0.2, -0.3, -0.4])
+
+class FakeAudioContext {
+  close = vi.fn(async () => undefined)
+  decodeAudioData = vi.fn(async () => ({
+    getChannelData: (index: number) => [leftChannel, rightChannel][index] ?? leftChannel,
+    numberOfChannels: 2,
+    sampleRate: 44_100,
+  }))
+}
+
 afterEach(() => {
   FakeWorker.current = null
   vi.unstubAllGlobals()
@@ -58,7 +70,8 @@ describe('audioExportService', () => {
     expect(workerSpy).not.toHaveBeenCalled()
   })
 
-  it('transfers the decoded ArrayBuffer to the worker and terminates after a successful encode', async () => {
+  it('decodes on the main thread, transfers PCM to the worker, and terminates after a successful encode', async () => {
+    vi.stubGlobal('AudioContext', FakeAudioContext)
     vi.stubGlobal('Worker', FakeWorker)
     const onProgress = vi.fn()
     const blobBytes = new Uint8Array([1, 2, 3, 4])
@@ -75,14 +88,15 @@ describe('audioExportService', () => {
     const lastCall = FakeWorker.current?.postMessage.mock.calls[0]
     if (!lastCall) throw new Error('worker was not invoked')
     const [payload, transferList] = lastCall as unknown as [
-      { arrayBuffer: ArrayBuffer; settings: unknown },
+      { channels: Float32Array[]; sampleRate: number; settings: unknown },
       Transferable[],
     ]
-    expect(payload).toMatchObject({ settings: { bitRate: 32, channelCount: 1 } })
-    expect(payload.arrayBuffer).toBeInstanceOf(ArrayBuffer)
-    expect(transferList).toEqual([payload.arrayBuffer])
+    expect(payload).toMatchObject({ sampleRate: 44_100, settings: { bitRate: 32, channelCount: 1 } })
+    expect(payload.channels).toEqual([leftChannel, rightChannel])
+    expect(transferList).toEqual([leftChannel.buffer, rightChannel.buffer])
     expect(FakeWorker.current?.terminate).toHaveBeenCalledTimes(1)
     expect(onProgress).toHaveBeenCalledWith(0.06)
-    expect(onProgress).toHaveBeenCalledWith(0.06 + 0.5 * 0.9)
+    expect(onProgress).toHaveBeenCalledWith(0.14)
+    expect(onProgress).toHaveBeenCalledWith(0.14 + 0.5 * 0.84)
   })
 })

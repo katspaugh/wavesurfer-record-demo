@@ -1,8 +1,8 @@
-import { decodeAndEncodeMp3Blob, type DecodeAndEncodeRequest } from '../services/mp3EncoderCore'
+import { encodePcmToMp3Blob, type EncodePcmRequest } from '../services/mp3EncoderCore'
 
-self.onmessage = async (event: MessageEvent<DecodeAndEncodeRequest>) => {
+self.onmessage = async (event: MessageEvent<EncodePcmRequest>) => {
   try {
-    const blob = await decodeAndEncodeMp3Blob(event.data, (progress) => {
+    const blob = await encodePcmToMp3Blob(event.data, (progress) => {
       self.postMessage({ type: 'progress', progress })
     })
     self.postMessage({ type: 'done', blob })
