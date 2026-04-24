@@ -139,7 +139,9 @@ This split lets the app recover interrupted sessions, show queue statistics, and
 
 ## Export and transcription details
 
-- MP3 export is deliberately offloaded to `src/workers/mp3Encoder.worker.ts`. The worker uses Mediabunny to read the recorded blob and `@mediabunny/mp3-encoder` to write an MP3 without using Web Audio on the main thread.
+- MP3 export is deliberately offloaded to `src/workers/mp3Encoder.worker.ts`. The worker uses Mediabunny to parse the recorded blob and `@mediabunny/mp3-encoder` to write an MP3 without using Web Audio on the main thread.
+- The export path is a browser-codec PoC rather than a production transcoding backend. Mediabunny handles container parsing, but compressed audio decode still depends on browser/WebCodecs support for the recorded codec, usually WebM/Opus.
+- Large recordings can still hit browser memory, CPU, worker, or codec-support limits, and the demo keeps an export-duration guard in code. A production system should use streaming or server-side transcoding for long recordings and broader codec coverage.
 - Live transcription depends on the browser `SpeechRecognition` / `webkitSpeechRecognition` API. Transcript segments are persisted on the session and rendered as non-editable waveform regions.
 - Transcript timing is estimated from recorder elapsed time, so regions are useful for navigation and context rather than word-perfect alignment.
 
