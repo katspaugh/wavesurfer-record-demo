@@ -139,6 +139,9 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   const accumulatedMsRef = useRef<number>(initialSession?.durationMs ?? 0)
   const takeFinalSegmentsRef = useRef<TranscriptSegment[]>([])
   const activeSessionIdRef = useRef<string | null>(null)
+  // Mirror of the partial transcript so stopRecording can flush it as a final segment
+  // even if SpeechRecognition is torn down before the engine emits its own finalization.
+  const partialTranscriptRef = useRef<string>('')
 
   const refreshDevices = useCallback(async () => {
     const result = await listMicrophones()
@@ -283,10 +286,15 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   const beginTranscription = useCallback(() => {
     if (speechRef.current) return
     setTranscriptionError(null)
+    partialTranscriptRef.current = ''
     setPartialTranscript('')
     const handle = startLiveTranscription({
-      onPartial: (text) => setPartialTranscript(text),
+      onPartial: (text) => {
+        partialTranscriptRef.current = text
+        setPartialTranscript(text)
+      },
       onFinal: (text, confidence) => {
+        partialTranscriptRef.current = ''
         setPartialTranscript('')
         const segment: TranscriptSegment = {
           id: crypto.randomUUID(),
@@ -342,6 +350,7 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     setFinalBlob(null)
     setTranscriptSegments([])
     setPartialTranscript('')
+    partialTranscriptRef.current = ''
     takeFinalSegmentsRef.current = []
     accumulatedMsRef.current = 0
     setElapsedMs(0)
@@ -387,6 +396,21 @@ export function usePipeline(options: UsePipelineOptions = {}) {
         setFinalUrl(url)
         setMimeType(mime)
         setStatus('stopped')
+        // Flush any in-flight partial as a final segment so a stop that races the
+        // SpeechRecognition flush does not silently drop visible-but-not-finalized text.
+        const trailingPartial = partialTranscriptRef.current.trim()
+        if (trailingPartial) {
+          const segment: TranscriptSegment = {
+            id: crypto.randomUUID(),
+            text: trailingPartial,
+            confidence: 0,
+            finalizedAt: Date.now(),
+          }
+          takeFinalSegmentsRef.current = [...takeFinalSegmentsRef.current, segment]
+          setTranscriptSegments((segments) => [...segments, segment])
+          partialTranscriptRef.current = ''
+          setPartialTranscript('')
+        }
         onTakeFinalized?.({
           sessionId,
           blob,

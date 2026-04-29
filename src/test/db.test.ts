@@ -72,27 +72,36 @@ describe('sessions + chunks', () => {
     await saveChunk(makeChunk('s1', 0, 100))
     await saveChunk(makeChunk('s1', 1, 250))
 
+    const transcript = [
+      { id: 't1', text: 'hello', confidence: 0.9, finalizedAt: 5_000 },
+      { id: 't2', text: 'world', confidence: 0.8, finalizedAt: 8_000 },
+    ]
     const finalized = await finalizeSession('s1', {
       durationMs: 10_000,
       size: 350,
       mimeType: 'audio/webm',
-      transcript: [],
+      transcript,
     })
     expect(finalized.ok).toBe(true)
     if (finalized.ok) {
       expect(finalized.value.finalized).toBe(true)
       expect(finalized.value.durationMs).toBe(10_000)
+      expect(finalized.value.transcript).toEqual(transcript)
     }
 
     const list = await listSessions()
     expect(list.ok).toBe(true)
-    if (list.ok) expect(list.value.map((s) => s.id)).toEqual(['s1'])
+    if (list.ok) {
+      expect(list.value.map((s) => s.id)).toEqual(['s1'])
+      expect(list.value[0]?.transcript).toEqual(transcript)
+    }
 
     const loaded = await loadSession('s1')
     expect(loaded.ok).toBe(true)
     if (loaded.ok && loaded.value) {
       expect(loaded.value.blob.size).toBe(350)
       expect(loaded.value.finalized).toBe(true)
+      expect(loaded.value.transcript).toEqual(transcript)
     }
   })
 
