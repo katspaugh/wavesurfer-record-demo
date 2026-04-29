@@ -43,7 +43,7 @@ export function HeapMonitorNode() {
         ) : (
           <>
             <div className={styles.statusRow}>
-              <span className={`${styles.statusDot} ${styles.statusOk}`} />
+              <span className={`${styles.statusDot} ${latest ? styles.statusOk : styles.statusIdle}`} />
               <span>{latest ? formatBytes(latest.used) : '—'} used</span>
             </div>
             <p>

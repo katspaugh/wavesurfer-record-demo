@@ -25,7 +25,14 @@ const HISTORY_LENGTH = 60
 
 function readMemory(): ChromePerformanceMemory | null {
   const candidate = (performance as Performance & { memory?: ChromePerformanceMemory }).memory
-  if (!candidate || typeof candidate.usedJSHeapSize !== 'number') return null
+  if (
+    !candidate ||
+    typeof candidate.usedJSHeapSize !== 'number' ||
+    typeof candidate.totalJSHeapSize !== 'number' ||
+    typeof candidate.jsHeapSizeLimit !== 'number'
+  ) {
+    return null
+  }
   return candidate
 }
 
