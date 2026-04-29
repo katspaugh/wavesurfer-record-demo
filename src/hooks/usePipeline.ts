@@ -1,5 +1,5 @@
 /** Composes the recorder pipeline: mic, recorder, transcription, MP3 export. */
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { createSession, deleteSession, type LoadedSession, type SessionMeta } from '../lib/db'
 import { isErr } from '../lib/result'
 import { pickSupportedMimeType } from '../services/mediaRecorderService'
@@ -41,6 +41,13 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   const transcription = useTranscription({ initialSegments: initialSession?.transcript ?? [] })
   const exporter = useMp3Export()
 
+  // Mirror onTakeFinalized so the recorder's async onStop (set during start()) reads
+  // the latest consumer callback instead of the closure captured when the take started.
+  const onTakeFinalizedRef = useRef(onTakeFinalized)
+  useEffect(() => {
+    onTakeFinalizedRef.current = onTakeFinalized
+  }, [onTakeFinalized])
+
   const startRecording = useCallback(async () => {
     recorder.actions.markRequestingMic()
     transcription.actions.resetForNewTake()
@@ -81,7 +88,7 @@ export function usePipeline(options: UsePipelineOptions = {}) {
         transcription.actions.flushPartialAsFinal()
         transcription.actions.teardown()
         mic.actions.releaseStream()
-        onTakeFinalized?.({
+        onTakeFinalizedRef.current?.({
           sessionId,
           blob,
           mimeType,
@@ -98,7 +105,7 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     }
 
     transcription.actions.begin()
-  }, [exporter.actions, mic.actions, onTakeFinalized, recorder.actions, transcription.actions])
+  }, [exporter.actions, mic.actions, recorder.actions, transcription.actions])
 
   const pauseRecording = useCallback(() => {
     recorder.actions.pause()
@@ -111,13 +118,15 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   }, [recorder.actions, transcription.actions])
 
   const stopRecording = useCallback(() => {
-    // Tear transcription + mic down synchronously so SpeechRecognition can't keep
+    // Tear transcription down synchronously so SpeechRecognition can't keep
     // emitting partials while MediaRecorder.stop()'s async onstop is still in flight.
+    // The mic stream is intentionally released only after the recorder finishes
+    // flushing (in the onStop callback) — ending the tracks first risks dropping
+    // the in-flight timeslice chunk on browsers that don't flush on track-end.
     transcription.actions.flushPartialAsFinal()
     transcription.actions.teardown()
-    mic.actions.releaseStream()
     recorder.actions.stop()
-  }, [mic.actions, recorder.actions, transcription.actions])
+  }, [recorder.actions, transcription.actions])
 
   const exportMp3 = useCallback(async () => {
     await exporter.actions.exportMp3(recorder.state.finalBlob, recorder.state.elapsedMs)
