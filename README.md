@@ -32,6 +32,8 @@ If you edit `*.module.css`, run `make css-types` to refresh the committed declar
 
 For a code-oriented overview of the data flow, storage model, and module boundaries, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
+State is split across four reducer-driven slice hooks (`useMicDevices`, `useRecorder`, `useTranscription`, `useMp3Export`) that `usePipeline` composes into the flat `state` / `actions` shape the flow nodes consume.
+
 ## What the flow chart shows
 
 The app opens on a session library (`?session=<id>` deep links to a saved take, `?session=new` to a fresh recording). Inside the recorder view, five nodes render the pipeline:

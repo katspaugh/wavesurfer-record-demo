@@ -61,15 +61,23 @@ This means a tab crash mid-recording becomes "the take shows up in the library o
 
 ## Orchestration
 
-`src/hooks/usePipeline.ts` owns state for all five nodes and the recorder lifecycle:
+`src/hooks/usePipeline.ts` is a thin composer over four sub-hooks. Each owns one slice of state — most use a `useReducer` so the related transitions live in one switch instead of being spread across many `setState` calls.
 
-- mic device list, selected device, processing toggles, mic error
-- recorder status, mime type, elapsed time, recorder error
-- queue chunks (read from IDB on open, appended to during live recording), byte total, recent enqueue events
-- final blob + object URL, MP3 settings, export progress and error
-- transcript segments, current partial, transcription error
+| Hook | State | Reducer? |
+| --- | --- | --- |
+| `useMicDevices` | device list, selected device, processing toggles, mic error, permission flag, internal stream ref | yes |
+| `useRecorder` | recorder status, mime type, elapsed time, queue chunks/bytes/recent events, final blob + object URL, recorder error | yes |
+| `useTranscription` | transcript segments, current partial, active flag, transcription error | yes |
+| `useMp3Export` | MP3 settings, export progress, isExporting, export error | yes |
 
-It accepts `{ initialSession?: LoadedSession; onTakeFinalized?: (take) => void }`. When `initialSession` is provided the hook seeds preview state and pulls the queue snapshot. When a fresh recording stops it fires `onTakeFinalized` with the assembled blob + sessionId so `App` can finalize the session row.
+`usePipeline` itself holds no `useState` — it just wires the sub-hooks together and re-exposes a flat `state` / `actions` shape so the flow nodes do not need to know about the split.
+
+Cross-slice handoffs:
+- `startRecording` calls `mic.acquireStream()`, creates the draft session row, calls `recorder.start({ stream, sessionId, onStop })`, then `transcription.begin()`. The `onStop` callback flushes any in-flight partial transcript to a final segment, tears down transcription, releases the stream, and fires `onTakeFinalized` with the assembled blob + sessionId + transcript.
+- `pauseRecording` / `resumeRecording` toggle `recorder` and `transcription` together so the live transcript engine matches the recorder lifecycle.
+- `exportMp3` reads `recorder.finalBlob` + `recorder.elapsedMs` and hands them to `useMp3Export`.
+
+`usePipeline` accepts `{ initialSession?: LoadedSession; onTakeFinalized?: (take) => void }`. When `initialSession` is provided the recorder slice seeds preview state and pulls the queue snapshot, and the transcription slice seeds its segment list.
 
 ## App routing & URL params
 
@@ -103,7 +111,11 @@ src/
     mp3EncoderCore.ts           # Mp3ExportSettings, defaults
     speechRecognitionService.ts
   hooks/
-    usePipeline.ts              # single orchestrator hook
+    usePipeline.ts              # composer: wires the four slices below
+    useMicDevices.ts            # device enumeration + stream lifecycle
+    useRecorder.ts              # MediaRecorder + timer + chunk queue + final blob
+    useTranscription.ts         # SpeechRecognition wrapper + segments
+    useMp3Export.ts             # encoder settings + export action
   components/
     ErrorBoundary/
     SessionLibrary/             # initial library view
