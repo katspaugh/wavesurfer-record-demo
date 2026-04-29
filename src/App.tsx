@@ -12,6 +12,7 @@ import {
   type SessionMeta,
 } from './lib/db'
 import type { AppError } from './lib/result'
+import { CHUNK_TIMESLICE_MS } from './services/mediaRecorderService'
 
 type AppView =
   | { kind: 'library' }
@@ -76,12 +77,13 @@ function App() {
 
   useEffect(() => {
     void (async () => {
-      const reconciled = await reconcileSessions()
+      const reconciled = await reconcileSessions({ chunkDurationMs: CHUNK_TIMESLICE_MS })
       if (reconciled.ok) {
-        const { recovered } = reconciled.value
-        if (recovered.length > 0) {
+        const { recovered, refreshed } = reconciled.value
+        const interrupted = recovered.length + refreshed.length
+        if (interrupted > 0) {
           setRecoveryNotice(
-            `Recovered ${recovered.length} interrupted recording${recovered.length === 1 ? '' : 's'}. Open a draft to listen back or finish encoding.`,
+            `Recovered ${interrupted} interrupted recording${interrupted === 1 ? '' : 's'}. Open a draft to listen back or finish encoding.`,
           )
         }
       } else {

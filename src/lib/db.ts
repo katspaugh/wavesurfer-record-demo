@@ -193,6 +193,20 @@ export async function finalizeSession(
   })
 }
 
+export async function patchSessionMeta(
+  id: string,
+  patch: Partial<Pick<SessionMeta, 'title' | 'durationMs' | 'size' | 'mimeType' | 'transcript'>>,
+): Promise<Result<SessionMeta, AppError>> {
+  return withTransaction(SESSIONS_STORE, 'readwrite', async (transaction) => {
+    const store = transaction.objectStore(SESSIONS_STORE)
+    const existing = await requestToPromise(store.get(id) as IDBRequest<SessionMeta | undefined>)
+    if (!existing) throw new Error(`Session ${id} not found.`)
+    const next: SessionMeta = { ...existing, ...patch, updatedAt: Date.now() }
+    store.put(next)
+    return next
+  })
+}
+
 export async function listSessions(): Promise<Result<SessionMeta[], AppError>> {
   return withTransaction(SESSIONS_STORE, 'readonly', async (transaction) => {
     const rows = await requestToPromise(transaction.objectStore(SESSIONS_STORE).getAll() as IDBRequest<SessionMeta[]>)
@@ -248,9 +262,23 @@ export type ReconcileReport = {
   recovered: string[]
   /** Sessions in `finalized: false` state with no chunks, deleted as failed starts. */
   pruned: string[]
+  /** Drafts whose `durationMs`/`size` were recomputed from their chunks. */
+  refreshed: string[]
 }
 
-export async function reconcileSessions(): Promise<Result<ReconcileReport, AppError>> {
+export type ReconcileOptions = {
+  /** Approximate duration to attribute to each chunk (defaults to MediaRecorder timeslice). */
+  chunkDurationMs?: number
+}
+
+const DEFAULT_CHUNK_DURATION_MS = 5_000
+
+function estimateDurationMs(chunkCount: number, chunkDurationMs: number): number {
+  return chunkCount * chunkDurationMs
+}
+
+export async function reconcileSessions(options: ReconcileOptions = {}): Promise<Result<ReconcileReport, AppError>> {
+  const chunkDurationMs = options.chunkDurationMs ?? DEFAULT_CHUNK_DURATION_MS
   const sessionsResult = await listSessions()
   if (!sessionsResult.ok) return sessionsResult
   const chunkIdsResult = await listChunkSessionIds()
@@ -275,7 +303,7 @@ export async function reconcileSessions(): Promise<Result<ReconcileReport, AppEr
       })}`,
       createdAt,
       updatedAt: Date.now(),
-      durationMs: 0,
+      durationMs: estimateDurationMs(chunks.value.length, chunkDurationMs),
       size,
       mimeType,
       transcript: [],
@@ -286,12 +314,24 @@ export async function reconcileSessions(): Promise<Result<ReconcileReport, AppEr
   }
 
   const pruned: string[] = []
+  const refreshed: string[] = []
   for (const session of sessionsResult.value) {
     if (session.finalized) continue
-    if (chunkSessionIds.has(session.id)) continue
-    const removed = await deleteSession(session.id)
-    if (removed.ok) pruned.push(session.id)
+    if (!chunkSessionIds.has(session.id)) {
+      const removed = await deleteSession(session.id)
+      if (removed.ok) pruned.push(session.id)
+      continue
+    }
+    // Draft with chunks: recompute size/duration so the library shows realistic numbers.
+    const chunks = await listChunksForSession(session.id)
+    if (!chunks.ok || chunks.value.length === 0) continue
+    const size = chunks.value.reduce((total, chunk) => total + chunk.size, 0)
+    const durationMs = estimateDurationMs(chunks.value.length, chunkDurationMs)
+    const mimeType = chunks.value[0]?.type ?? session.mimeType
+    if (session.size === size && session.durationMs === durationMs && session.mimeType === mimeType) continue
+    const patched = await patchSessionMeta(session.id, { size, durationMs, mimeType })
+    if (patched.ok) refreshed.push(session.id)
   }
 
-  return ok({ recovered, pruned })
+  return ok({ recovered, pruned, refreshed })
 }

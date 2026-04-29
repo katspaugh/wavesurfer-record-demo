@@ -116,6 +116,9 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   const [finalUrl, setFinalUrl] = useState<string | null>(() =>
     initialSession ? URL.createObjectURL(initialSession.blob) : null,
   )
+  // Track every URL handed to setFinalUrl so unmount can revoke whichever one is current,
+  // including the URL minted in the lazy initializer above.
+  const pendingBlobUrlRef = useRef<string | null>(finalUrl)
   const [exportError, setExportError] = useState<AppError | null>(null)
   const [exportProgress, setExportProgress] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
@@ -134,7 +137,6 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   const tickRef = useRef<number | null>(null)
   const startedAtRef = useRef<number>(0)
   const accumulatedMsRef = useRef<number>(initialSession?.durationMs ?? 0)
-  const pendingBlobUrlRef = useRef<string | null>(null)
   const takeFinalSegmentsRef = useRef<TranscriptSegment[]>([])
   const activeSessionIdRef = useRef<string | null>(null)
 
@@ -317,8 +319,9 @@ export function usePipeline(options: UsePipelineOptions = {}) {
       void refreshDevices()
     }
 
-    if (finalUrl) {
-      URL.revokeObjectURL(finalUrl)
+    if (pendingBlobUrlRef.current) {
+      URL.revokeObjectURL(pendingBlobUrlRef.current)
+      pendingBlobUrlRef.current = null
       setFinalUrl(null)
     }
     setFinalBlob(null)
@@ -390,7 +393,7 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     setMimeType(recorder.value.mimeType)
     startTimer()
     beginTranscription()
-  }, [beginTranscription, finalUrl, handleChunk, micProcessing, onTakeFinalized, refreshDevices, selectedDeviceId, startTimer])
+  }, [beginTranscription, handleChunk, micProcessing, onTakeFinalized, refreshDevices, selectedDeviceId, startTimer])
 
   const pauseRecording = useCallback(() => {
     const handle = recorderRef.current

@@ -138,12 +138,13 @@ describe('reconcileSessions', () => {
     // Healthy finalized session that should be untouched.
     await createSession(makeSession('keep', true))
 
-    const result = await reconcileSessions()
+    const result = await reconcileSessions({ chunkDurationMs: 5_000 })
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
     expect(result.value.recovered).toEqual(['orphan'])
     expect(result.value.pruned).toEqual(['emptyDraft'])
+    expect(result.value.refreshed).toEqual([])
 
     const sessions = await listSessions()
     if (sessions.ok) {
@@ -152,6 +153,44 @@ describe('reconcileSessions', () => {
       const orphanRow = sessions.value.find((s) => s.id === 'orphan')!
       expect(orphanRow.finalized).toBe(false)
       expect(orphanRow.size).toBe(120)
+      // Two chunks × 5 s timeslice = 10 s estimated duration.
+      expect(orphanRow.durationMs).toBe(10_000)
+    }
+  })
+
+  it('refreshes draft size/duration for sessions whose chunks were written before the row caught up', async () => {
+    // Draft session row created at start with zeroed metadata.
+    await createSession(makeSession('draft', false))
+    // Chunks written subsequently.
+    await saveChunk(makeChunk('draft', 0, 80))
+    await saveChunk(makeChunk('draft', 1, 90))
+    await saveChunk(makeChunk('draft', 2, 100))
+
+    const result = await reconcileSessions({ chunkDurationMs: 1_000 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.value.recovered).toEqual([])
+    expect(result.value.pruned).toEqual([])
+    expect(result.value.refreshed).toEqual(['draft'])
+
+    const draft = await getSession('draft')
+    if (draft.ok && draft.value) {
+      expect(draft.value.size).toBe(270)
+      expect(draft.value.durationMs).toBe(3_000)
+      expect(draft.value.finalized).toBe(false)
+    }
+  })
+
+  it('leaves finalized sessions alone even when their chunks remain in the queue', async () => {
+    await createSession(makeSession('finalized', true))
+    await saveChunk(makeChunk('finalized', 0, 100))
+
+    const result = await reconcileSessions()
+    if (result.ok) {
+      expect(result.value.recovered).toEqual([])
+      expect(result.value.refreshed).toEqual([])
+      expect(result.value.pruned).toEqual([])
     }
   })
 })
