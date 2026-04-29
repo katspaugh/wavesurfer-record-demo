@@ -1,5 +1,5 @@
 /** Microphone slice: device enumeration, processing flags, and stream lifecycle. */
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { type AppError } from '../lib/result'
 import {
   DEFAULT_MIC_PROCESSING,
@@ -133,14 +133,10 @@ export function useMicDevices() {
     dispatch({ type: 'toggle-processing', option })
   }, [])
 
-  return {
-    state,
-    actions: {
-      refreshDevices,
-      selectDevice,
-      toggleProcessing,
-      acquireStream,
-      releaseStream,
-    },
-  }
+  const actions = useMemo(
+    () => ({ refreshDevices, selectDevice, toggleProcessing, acquireStream, releaseStream }),
+    [refreshDevices, selectDevice, toggleProcessing, acquireStream, releaseStream],
+  )
+
+  return { state, actions }
 }

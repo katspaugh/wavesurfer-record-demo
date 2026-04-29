@@ -1,5 +1,5 @@
 /** MP3 export slice: encoder settings, progress, and the export action. */
-import { useCallback, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { downloadBlob, MAX_EXPORT_DURATION_MS } from '../lib/audio'
 import { appError, isErr, type AppError } from '../lib/result'
 import { encodeMp3 } from '../services/audioExportService'
@@ -55,6 +55,12 @@ function reducer(state: Mp3ExportState, action: Action): Mp3ExportState {
 export function useMp3Export() {
   const [state, dispatch] = useReducer(reducer, initialState)
 
+  // Mirror settings so exportMp3 can read the latest value without changing identity.
+  const settingsRef = useRef(state.mp3Settings)
+  useEffect(() => {
+    settingsRef.current = state.mp3Settings
+  }, [state.mp3Settings])
+
   const setBitRate = useCallback((bitRate: Mp3BitRate) => {
     dispatch({ type: 'set-bit-rate', bitRate })
   }, [])
@@ -79,7 +85,7 @@ export function useMp3Export() {
     }
 
     dispatch({ type: 'export-start' })
-    const result = await encodeMp3(blob, state.mp3Settings, (progress) => {
+    const result = await encodeMp3(blob, settingsRef.current, (progress) => {
       dispatch({ type: 'export-progress', progress })
     })
     if (isErr(result)) {
@@ -88,10 +94,12 @@ export function useMp3Export() {
     }
     dispatch({ type: 'export-success' })
     downloadBlob(result.value, `recording-${Date.now()}.mp3`)
-  }, [state.mp3Settings])
+  }, [])
 
-  return {
-    state,
-    actions: { exportMp3, setBitRate, setChannelCount, resetExportStatus },
-  }
+  const actions = useMemo(
+    () => ({ exportMp3, setBitRate, setChannelCount, resetExportStatus }),
+    [exportMp3, setBitRate, setChannelCount, resetExportStatus],
+  )
+
+  return { state, actions }
 }

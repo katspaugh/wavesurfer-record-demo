@@ -1,5 +1,5 @@
 /** Live transcription slice: segments, in-flight partial, engine lifecycle. */
-import { useCallback, useReducer, useRef } from 'react'
+import { useCallback, useMemo, useReducer, useRef } from 'react'
 import { type AppError } from '../lib/result'
 import { startLiveTranscription, type SpeechHandle } from '../services/speechRecognitionService'
 import type { TranscriptSegment } from '../types'
@@ -118,8 +118,10 @@ export function useTranscription(options: UseTranscriptionOptions = {}) {
 
   const getSegments = useCallback(() => segmentsRef.current, [])
 
-  return {
-    state,
-    actions: { begin, teardown, resetForNewTake, flushPartialAsFinal, getSegments },
-  }
+  const actions = useMemo(
+    () => ({ begin, teardown, resetForNewTake, flushPartialAsFinal, getSegments }),
+    [begin, teardown, resetForNewTake, flushPartialAsFinal, getSegments],
+  )
+
+  return { state, actions }
 }

@@ -1,5 +1,5 @@
 /** Recorder slice: MediaRecorder lifecycle, elapsed timer, chunk queue, and final blob. */
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { MAX_RECORDING_MS } from '../lib/audio'
 import {
   getQueueSnapshotForSession,
@@ -349,15 +349,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     stop()
   }, [state.elapsedMs, state.status, stop])
 
-  return {
-    state,
-    actions: {
-      start,
-      pause,
-      resume,
-      stop,
-      markRequestingMic,
-      markIdle,
-    },
-  }
+  const actions = useMemo(
+    () => ({ start, pause, resume, stop, markRequestingMic, markIdle }),
+    [start, pause, resume, stop, markRequestingMic, markIdle],
+  )
+
+  return { state, actions }
 }
