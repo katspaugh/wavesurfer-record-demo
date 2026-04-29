@@ -298,3 +298,13 @@
   font-style: italic;
   padding: 6px 0;
 }
+
+.heapSpark {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: block;
+  height: 56px;
+  margin: 6px 0 12px;
+  width: 100%;
+}

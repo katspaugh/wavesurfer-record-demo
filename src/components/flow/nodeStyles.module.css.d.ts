@@ -9,6 +9,7 @@ declare const styles: {
   readonly "errorBox": string;
   readonly "field": string;
   readonly "header": string;
+  readonly "heapSpark": string;
   readonly "input": string;
   readonly "metric": string;
   readonly "node": string;

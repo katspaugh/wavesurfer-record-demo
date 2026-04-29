@@ -14,6 +14,7 @@ import '@xyflow/react/dist/style.css'
 import { usePipeline, type FinalizedTake } from '../../hooks/usePipeline'
 import type { LoadedSession } from '../../lib/db'
 import { ExportNode } from './ExportNode'
+import { HeapMonitorNode } from './HeapMonitorNode'
 import { MicNode } from './MicNode'
 import { QueueNode } from './QueueNode'
 import { RecorderNode } from './RecorderNode'
@@ -25,6 +26,7 @@ const nodeTypes: NodeTypes = {
   queue: QueueNode,
   export: ExportNode,
   transcription: TranscriptionNode,
+  heapMonitor: HeapMonitorNode,
 }
 
 const initialNodes: Node[] = [
@@ -33,6 +35,7 @@ const initialNodes: Node[] = [
   { id: 'queue', type: 'queue', position: { x: 1040, y: 80 }, data: {} },
   { id: 'transcription', type: 'transcription', position: { x: 180, y: 720 }, data: {} },
   { id: 'export', type: 'export', position: { x: 860, y: 600 }, data: {} },
+  { id: 'heapMonitor', type: 'heapMonitor', position: { x: 1480, y: 720 }, data: {} },
 ]
 
 export type PipelineFlowProps = {
