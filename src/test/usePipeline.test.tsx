@@ -7,11 +7,98 @@ vi.mock('../services/audioExportService', () => ({
   encodeMp3: vi.fn(),
 }))
 
+vi.mock('../services/micService', async () => {
+  const actual = await vi.importActual<typeof import('../services/micService')>('../services/micService')
+  return {
+    ...actual,
+    listMicrophones: vi.fn(),
+    requestMicrophoneStream: vi.fn(),
+    stopStream: vi.fn(),
+  }
+})
+
+vi.mock('../services/speechRecognitionService', async () => {
+  const actual = await vi.importActual<typeof import('../services/speechRecognitionService')>(
+    '../services/speechRecognitionService',
+  )
+  return {
+    ...actual,
+    startLiveTranscription: vi.fn(),
+  }
+})
+
+vi.mock('../lib/db', async () => {
+  const actual = await vi.importActual<typeof import('../lib/db')>('../lib/db')
+  return {
+    ...actual,
+    createSession: vi.fn(),
+    deleteSession: vi.fn(),
+    saveChunk: vi.fn(),
+    getQueueSnapshotForSession: vi.fn(),
+  }
+})
+
 import { usePipeline } from '../hooks/usePipeline'
 import { encodeMp3 } from '../services/audioExportService'
-import type { LoadedSession } from '../lib/db'
+import {
+  listMicrophones,
+  requestMicrophoneStream,
+  stopStream,
+} from '../services/micService'
+import { startLiveTranscription } from '../services/speechRecognitionService'
+import {
+  createSession,
+  deleteSession,
+  getQueueSnapshotForSession,
+  saveChunk,
+  type LoadedSession,
+} from '../lib/db'
 
 const encodeMp3Mock = vi.mocked(encodeMp3)
+const listMicrophonesMock = vi.mocked(listMicrophones)
+const requestMicrophoneStreamMock = vi.mocked(requestMicrophoneStream)
+const stopStreamMock = vi.mocked(stopStream)
+const startLiveTranscriptionMock = vi.mocked(startLiveTranscription)
+const createSessionMock = vi.mocked(createSession)
+const deleteSessionMock = vi.mocked(deleteSession)
+const saveChunkMock = vi.mocked(saveChunk)
+const snapshotMock = vi.mocked(getQueueSnapshotForSession)
+
+type RecorderState = 'inactive' | 'recording' | 'paused'
+class FakeMediaRecorder {
+  static instances: FakeMediaRecorder[] = []
+  static isTypeSupported = vi.fn(() => true)
+  state: RecorderState = 'inactive'
+  mimeType: string
+  ondataavailable: ((event: { data: Blob }) => void) | null = null
+  onerror: ((event: Event & { error?: unknown }) => void) | null = null
+  onstart: (() => void) | null = null
+  onpause: (() => void) | null = null
+  onresume: (() => void) | null = null
+  onstop: (() => void) | null = null
+  constructor(_stream: MediaStream, options?: { mimeType?: string }) {
+    this.mimeType = options?.mimeType ?? 'audio/webm'
+    FakeMediaRecorder.instances.push(this)
+  }
+  start() {
+    this.state = 'recording'
+    this.onstart?.()
+  }
+  pause() {
+    this.state = 'paused'
+    this.onpause?.()
+  }
+  resume() {
+    this.state = 'recording'
+    this.onresume?.()
+  }
+  stop() {
+    this.state = 'inactive'
+    this.onstop?.()
+  }
+}
+
+const originalMediaRecorder = (globalThis as { MediaRecorder?: unknown }).MediaRecorder
 
 function makeLoadedSession(overrides: Partial<LoadedSession> = {}): LoadedSession {
   const base: LoadedSession = {
@@ -22,9 +109,7 @@ function makeLoadedSession(overrides: Partial<LoadedSession> = {}): LoadedSessio
     durationMs: 8_000,
     size: 1024,
     mimeType: 'audio/webm',
-    transcript: [
-      { id: 't1', text: 'hello', confidence: 0.9, finalizedAt: 1_500 },
-    ],
+    transcript: [{ id: 't1', text: 'hello', confidence: 0.9, finalizedAt: 1_500 }],
     finalized: true,
     blob: new Blob([new Uint8Array(1024)], { type: 'audio/webm' }),
   }
@@ -33,19 +118,32 @@ function makeLoadedSession(overrides: Partial<LoadedSession> = {}): LoadedSessio
 
 beforeEach(() => {
   encodeMp3Mock.mockReset()
-  // Stub URL APIs because happy-dom does not implement them on Blob.
-  const created = new Set<string>()
+  listMicrophonesMock.mockReset()
+  listMicrophonesMock.mockResolvedValue({ ok: true, value: [] })
+  requestMicrophoneStreamMock.mockReset()
+  stopStreamMock.mockReset()
+  startLiveTranscriptionMock.mockReset()
+  startLiveTranscriptionMock.mockReturnValue({ ok: true, value: { stop: vi.fn() } })
+  createSessionMock.mockReset()
+  createSessionMock.mockResolvedValue({ ok: true, value: undefined })
+  deleteSessionMock.mockReset()
+  deleteSessionMock.mockResolvedValue({ ok: true, value: undefined })
+  saveChunkMock.mockReset()
+  saveChunkMock.mockResolvedValue({ ok: true, value: undefined })
+  snapshotMock.mockReset()
+  snapshotMock.mockResolvedValue({ ok: true, value: { chunks: [], bytes: 0 } })
+
+  FakeMediaRecorder.instances = []
+  Object.defineProperty(globalThis, 'MediaRecorder', {
+    configurable: true,
+    writable: true,
+    value: FakeMediaRecorder,
+  })
+
   let counter = 0
-  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => {
-    counter += 1
-    const url = `blob:test/${counter}`
-    created.add(url)
-    return url
-  })
-  vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url: string) => {
-    created.delete(url)
-  })
-  // happy-dom lacks navigator.mediaDevices; usePipeline only reads it inside an effect.
+  vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:test/${++counter}`)
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+
   Object.defineProperty(globalThis.navigator, 'mediaDevices', {
     configurable: true,
     value: { enumerateDevices: vi.fn().mockResolvedValue([]) },
@@ -55,6 +153,11 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  Object.defineProperty(globalThis, 'MediaRecorder', {
+    configurable: true,
+    writable: true,
+    value: originalMediaRecorder,
+  })
 })
 
 describe('usePipeline', () => {
@@ -109,5 +212,76 @@ describe('usePipeline', () => {
     expect(encodeMp3Mock).toHaveBeenCalledTimes(1)
     expect(result.current.state.exportProgress).toBe(1)
     expect(result.current.state.exportError).toBeNull()
+  })
+
+  it('startRecording resets a stale export error from a previous run', async () => {
+    const session = makeLoadedSession({ durationMs: 999 * 60_000 })
+    const fakeStream = { getTracks: () => [] } as unknown as MediaStream
+    requestMicrophoneStreamMock.mockResolvedValue({ ok: true, value: fakeStream })
+
+    const { result } = renderHook(() => usePipeline({ initialSession: session }))
+
+    await act(async () => {
+      await result.current.actions.exportMp3()
+    })
+    expect(result.current.state.exportError?.code).toBe('invalid-state')
+
+    await act(async () => {
+      await result.current.actions.startRecording()
+    })
+
+    expect(result.current.state.exportError).toBeNull()
+    expect(result.current.state.exportProgress).toBe(0)
+  })
+
+  it('releases the mic stream and surfaces a recorderError when createSession fails', async () => {
+    const fakeStream = { getTracks: () => [] } as unknown as MediaStream
+    requestMicrophoneStreamMock.mockResolvedValue({ ok: true, value: fakeStream })
+    createSessionMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'storage', message: 'IDB write failed' },
+    })
+
+    const { result } = renderHook(() => usePipeline())
+
+    await act(async () => {
+      await result.current.actions.startRecording()
+    })
+
+    expect(stopStreamMock).toHaveBeenCalledWith(fakeStream)
+    expect(result.current.state.recorderError?.code).toBe('storage')
+    expect(result.current.state.status).toBe('idle')
+    expect(FakeMediaRecorder.instances).toHaveLength(0)
+  })
+
+  it('stopRecording tears down transcription synchronously, before MediaRecorder.onstop fires', async () => {
+    const speechStop = vi.fn()
+    startLiveTranscriptionMock.mockReturnValue({ ok: true, value: { stop: speechStop } })
+    const fakeStream = { getTracks: () => [] } as unknown as MediaStream
+    requestMicrophoneStreamMock.mockResolvedValue({ ok: true, value: fakeStream })
+
+    const { result } = renderHook(() => usePipeline())
+
+    await act(async () => {
+      await result.current.actions.startRecording()
+    })
+    expect(speechStop).not.toHaveBeenCalled()
+    const recorder = FakeMediaRecorder.instances.at(-1)!
+    // Defer the recorder's onstop so we can prove transcription tears down before it fires.
+    const realOnStop = recorder.onstop
+    let pendingStop: (() => void) | null = null
+    recorder.onstop = null
+    recorder.stop = function deferredStop() {
+      this.state = 'inactive'
+      pendingStop = () => realOnStop?.()
+    }
+
+    act(() => result.current.actions.stopRecording())
+
+    expect(speechStop).toHaveBeenCalledTimes(1)
+    expect(stopStreamMock).not.toHaveBeenCalled()
+
+    act(() => pendingStop?.())
+    expect(stopStreamMock).toHaveBeenCalledWith(fakeStream)
   })
 })

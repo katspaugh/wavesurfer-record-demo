@@ -1,87 +1,15 @@
-/** Orchestrates the recording pipeline: mic, recorder, IDB queue, export, transcription. */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { downloadBlob, MAX_EXPORT_DURATION_MS, MAX_RECORDING_MS } from '../lib/audio'
-import {
-  createSession,
-  deleteSession,
-  getQueueSnapshotForSession,
-  saveChunk,
-  type ChunkMetadata,
-  type LoadedSession,
-  type SessionMeta,
-  type StoredChunk,
-} from '../lib/db'
-import { appError, isErr, type AppError } from '../lib/result'
-import { encodeMp3 } from '../services/audioExportService'
-import {
-  CHUNK_TIMESLICE_MS,
-  pickSupportedMimeType,
-  startMediaRecorder,
-  type RecorderHandle,
-} from '../services/mediaRecorderService'
-import {
-  DEFAULT_MIC_PROCESSING,
-  listMicrophones,
-  requestMicrophoneStream,
-  stopStream,
-  type MicDevice,
-  type MicProcessing,
-  type MicProcessingOption,
-} from '../services/micService'
-import {
-  DEFAULT_MP3_EXPORT_SETTINGS,
-  type Mp3BitRate,
-  type Mp3ChannelCount,
-  type Mp3ExportSettings,
-} from '../services/mp3EncoderCore'
-import { startLiveTranscription, type SpeechHandle } from '../services/speechRecognitionService'
-import type { RecordingStatus, TranscriptSegment } from '../types'
+/** Composes the recorder pipeline: mic, recorder, transcription, MP3 export. */
+import { useCallback, useEffect, useRef } from 'react'
+import { createSession, deleteSession, type LoadedSession, type SessionMeta } from '../lib/db'
+import { isErr } from '../lib/result'
+import { pickSupportedMimeType } from '../services/mediaRecorderService'
+import type { TranscriptSegment } from '../types'
+import { useMicDevices } from './useMicDevices'
+import { useMp3Export } from './useMp3Export'
+import { useRecorder, type RecentQueueEvent } from './useRecorder'
+import { useTranscription } from './useTranscription'
 
-export type RecentQueueEvent = {
-  id: string
-  kind: 'enqueue' | 'drain'
-  size: number
-  sequence: number
-  at: number
-}
-
-export type PipelineState = {
-  status: RecordingStatus
-  mimeType: string
-  elapsedMs: number
-  micDevices: MicDevice[]
-  selectedDeviceId: string
-  micProcessing: MicProcessing
-  micError: AppError | null
-  permissionGranted: boolean
-  recorderError: AppError | null
-  queueChunks: ChunkMetadata[]
-  queueBytes: number
-  recentQueueEvents: RecentQueueEvent[]
-  finalBlob: Blob | null
-  finalUrl: string | null
-  exportError: AppError | null
-  exportProgress: number
-  isExporting: boolean
-  mp3Settings: Mp3ExportSettings
-  transcriptSegments: TranscriptSegment[]
-  partialTranscript: string
-  transcriptionActive: boolean
-  transcriptionError: AppError | null
-}
-
-const MAX_QUEUE_EVENTS = 8
-
-function nowMs() {
-  return typeof performance !== 'undefined' ? performance.now() : Date.now()
-}
-
-function defaultDraftTitle(now: number): string {
-  return `Recording — ${new Date(now).toLocaleString(undefined, {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  })}`
-}
+export type { RecentQueueEvent }
 
 export type FinalizedTake = {
   sessionId: string
@@ -96,272 +24,42 @@ export type UsePipelineOptions = {
   onTakeFinalized?: (take: FinalizedTake) => void
 }
 
+export type PipelineState = ReturnType<typeof usePipeline>['state']
+
+function defaultDraftTitle(now: number): string {
+  return `Recording — ${new Date(now).toLocaleString(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })}`
+}
+
 export function usePipeline(options: UsePipelineOptions = {}) {
   const { initialSession, onTakeFinalized } = options
-  const [status, setStatus] = useState<RecordingStatus>(initialSession ? 'stopped' : 'idle')
-  const [mimeType, setMimeType] = useState<string>(
-    initialSession?.mimeType ?? pickSupportedMimeType() ?? 'browser default',
-  )
-  const [elapsedMs, setElapsedMs] = useState(initialSession?.durationMs ?? 0)
-  const [micDevices, setMicDevices] = useState<MicDevice[]>([])
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
-  const [micProcessing, setMicProcessing] = useState<MicProcessing>(DEFAULT_MIC_PROCESSING)
-  const [micError, setMicError] = useState<AppError | null>(null)
-  const [permissionGranted, setPermissionGranted] = useState<boolean>(false)
-  const [recorderError, setRecorderError] = useState<AppError | null>(null)
-  const [queueChunks, setQueueChunks] = useState<ChunkMetadata[]>([])
-  const [queueBytes, setQueueBytes] = useState(0)
-  const [recentQueueEvents, setRecentQueueEvents] = useState<RecentQueueEvent[]>([])
-  const [finalBlob, setFinalBlob] = useState<Blob | null>(initialSession?.blob ?? null)
-  const [finalUrl, setFinalUrl] = useState<string | null>(() =>
-    initialSession ? URL.createObjectURL(initialSession.blob) : null,
-  )
-  // Track every URL handed to setFinalUrl so unmount can revoke whichever one is current,
-  // including the URL minted in the lazy initializer above.
-  const pendingBlobUrlRef = useRef<string | null>(finalUrl)
-  const [exportError, setExportError] = useState<AppError | null>(null)
-  const [exportProgress, setExportProgress] = useState(0)
-  const [isExporting, setIsExporting] = useState(false)
-  const [mp3Settings, setMp3Settings] = useState<Mp3ExportSettings>(DEFAULT_MP3_EXPORT_SETTINGS)
-  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>(
-    initialSession?.transcript ?? [],
-  )
-  const [partialTranscript, setPartialTranscript] = useState('')
-  const [transcriptionActive, setTranscriptionActive] = useState(false)
-  const [transcriptionError, setTranscriptionError] = useState<AppError | null>(null)
 
-  const streamRef = useRef<MediaStream | null>(null)
-  const recorderRef = useRef<RecorderHandle | null>(null)
-  const speechRef = useRef<SpeechHandle | null>(null)
-  const chunkSequenceRef = useRef(0)
-  const tickRef = useRef<number | null>(null)
-  const startedAtRef = useRef<number>(0)
-  const accumulatedMsRef = useRef<number>(initialSession?.durationMs ?? 0)
-  const takeFinalSegmentsRef = useRef<TranscriptSegment[]>([])
-  const activeSessionIdRef = useRef<string | null>(null)
-  // Mirror of the partial transcript so stopRecording can flush it as a final segment
-  // even if SpeechRecognition is torn down before the engine emits its own finalization.
-  const partialTranscriptRef = useRef<string>('')
+  const mic = useMicDevices()
+  const recorder = useRecorder({ initialSession: initialSession ?? null })
+  const transcription = useTranscription({ initialSegments: initialSession?.transcript ?? [] })
+  const exporter = useMp3Export()
 
-  const refreshDevices = useCallback(async () => {
-    const result = await listMicrophones()
-    if (result.ok) {
-      setMicDevices(result.value)
-      if (!selectedDeviceId && result.value[0]) {
-        setSelectedDeviceId(result.value[0].deviceId)
-      }
-    } else {
-      setMicError(result.error)
-    }
-  }, [selectedDeviceId])
-
+  // Mirror onTakeFinalized so the recorder's async onStop (set during start()) reads
+  // the latest consumer callback instead of the closure captured when the take started.
+  const onTakeFinalizedRef = useRef(onTakeFinalized)
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.addEventListener) {
-      // refreshDevices runs after a microtask, so updates land outside this effect's commit.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      void refreshDevices()
-      return undefined
-    }
-    const handler = () => void refreshDevices()
-    navigator.mediaDevices.addEventListener('devicechange', handler)
-    handler()
-    return () => navigator.mediaDevices.removeEventListener('devicechange', handler)
-  }, [refreshDevices])
+    onTakeFinalizedRef.current = onTakeFinalized
+  }, [onTakeFinalized])
 
-  useEffect(() => {
-    if (!initialSession) return
-    void (async () => {
-      const snapshot = await getQueueSnapshotForSession(initialSession.id)
-      if (snapshot.ok) {
-        setQueueChunks(snapshot.value.chunks)
-        setQueueBytes(snapshot.value.bytes)
-        const events = [...snapshot.value.chunks]
-          .sort((a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt)
-          .slice(-MAX_QUEUE_EVENTS)
-          .map<RecentQueueEvent>((chunk) => ({
-            id: chunk.id,
-            kind: 'enqueue',
-            size: chunk.size,
-            sequence: chunk.sequence,
-            at: chunk.createdAt,
-          }))
-        setRecentQueueEvents(events)
-      }
-    })()
-  }, [initialSession])
+  const startRecording = useCallback(async () => {
+    recorder.actions.markRequestingMic()
+    transcription.actions.resetForNewTake()
+    exporter.actions.resetExportStatus()
 
-  useEffect(() => () => {
-    // Unmount: stop everything still alive so navigating away doesn't leave the mic open
-    // or the recording timer ticking, and revoke any object URL we created.
-    recorderRef.current?.stop()
-    recorderRef.current = null
-    speechRef.current?.stop()
-    speechRef.current = null
-    if (tickRef.current !== null) {
-      window.clearInterval(tickRef.current)
-      tickRef.current = null
-    }
-    stopStream(streamRef.current)
-    streamRef.current = null
-    if (pendingBlobUrlRef.current) {
-      URL.revokeObjectURL(pendingBlobUrlRef.current)
-      pendingBlobUrlRef.current = null
-    }
-  }, [])
-
-  const stopTimer = useCallback(() => {
-    if (tickRef.current !== null) {
-      window.clearInterval(tickRef.current)
-      tickRef.current = null
-    }
-  }, [])
-
-  const startTimer = useCallback(() => {
-    stopTimer()
-    startedAtRef.current = nowMs()
-    tickRef.current = window.setInterval(() => {
-      setElapsedMs(accumulatedMsRef.current + (nowMs() - startedAtRef.current))
-    }, 200)
-  }, [stopTimer])
-
-  const pauseTimer = useCallback(() => {
-    stopTimer()
-    accumulatedMsRef.current += nowMs() - startedAtRef.current
-    setElapsedMs(accumulatedMsRef.current)
-  }, [stopTimer])
-
-  const recordQueueEvent = useCallback((event: RecentQueueEvent) => {
-    setRecentQueueEvents((events) => [...events, event].slice(-MAX_QUEUE_EVENTS))
-  }, [])
-
-  const handleChunk = useCallback(async (blob: Blob, mime: string) => {
-    const sessionId = activeSessionIdRef.current
-    if (!sessionId) return
-    const chunk: StoredChunk = {
-      id: crypto.randomUUID(),
-      sessionId,
-      sequence: chunkSequenceRef.current,
-      createdAt: Date.now(),
-      size: blob.size,
-      type: mime,
-      blob,
-    }
-    chunkSequenceRef.current += 1
-
-    const result = await saveChunk(chunk)
-    if (isErr(result)) {
-      setRecorderError(result.error)
+    const stream = await mic.actions.acquireStream()
+    if (!stream) {
+      recorder.actions.markIdle()
       return
     }
 
-    setQueueChunks((current) => [...current, {
-      id: chunk.id,
-      sessionId: chunk.sessionId,
-      sequence: chunk.sequence,
-      createdAt: chunk.createdAt,
-      size: chunk.size,
-      type: chunk.type,
-    }])
-    setQueueBytes((current) => current + chunk.size)
-    recordQueueEvent({
-      id: chunk.id,
-      kind: 'enqueue',
-      size: chunk.size,
-      sequence: chunk.sequence,
-      at: Date.now(),
-    })
-  }, [recordQueueEvent])
-
-  const teardownStream = useCallback(() => {
-    stopStream(streamRef.current)
-    streamRef.current = null
-  }, [])
-
-  const teardownTranscription = useCallback(() => {
-    speechRef.current?.stop()
-    speechRef.current = null
-    setTranscriptionActive(false)
-  }, [])
-
-  const beginTranscription = useCallback(() => {
-    if (speechRef.current) return
-    setTranscriptionError(null)
-    partialTranscriptRef.current = ''
-    setPartialTranscript('')
-    const handle = startLiveTranscription({
-      onPartial: (text) => {
-        partialTranscriptRef.current = text
-        setPartialTranscript(text)
-      },
-      onFinal: (text, confidence) => {
-        partialTranscriptRef.current = ''
-        setPartialTranscript('')
-        const segment: TranscriptSegment = {
-          id: crypto.randomUUID(),
-          text,
-          confidence,
-          finalizedAt: Date.now(),
-        }
-        takeFinalSegmentsRef.current = [...takeFinalSegmentsRef.current, segment]
-        setTranscriptSegments((segments) => [...segments, segment])
-      },
-      onError: (error) => {
-        setTranscriptionError(error)
-        setTranscriptionActive(false)
-      },
-      onEnd: () => setTranscriptionActive(false),
-    })
-
-    if (handle.ok) {
-      speechRef.current = handle.value
-      setTranscriptionActive(true)
-    } else {
-      setTranscriptionError(handle.error)
-    }
-  }, [])
-
-  const startRecording = useCallback(async () => {
-    setRecorderError(null)
-    setMicError(null)
-    setExportError(null)
-    setStatus('requesting-mic')
-
-    if (!streamRef.current) {
-      const result = await requestMicrophoneStream({
-        deviceId: selectedDeviceId || undefined,
-        processing: micProcessing,
-      })
-      if (isErr(result)) {
-        setMicError(result.error)
-        setStatus('idle')
-        return
-      }
-      streamRef.current = result.value
-      setPermissionGranted(true)
-      // Refresh device labels now that permission is granted.
-      void refreshDevices()
-    }
-
-    if (pendingBlobUrlRef.current) {
-      URL.revokeObjectURL(pendingBlobUrlRef.current)
-      pendingBlobUrlRef.current = null
-      setFinalUrl(null)
-    }
-    setFinalBlob(null)
-    setTranscriptSegments([])
-    setPartialTranscript('')
-    partialTranscriptRef.current = ''
-    takeFinalSegmentsRef.current = []
-    accumulatedMsRef.current = 0
-    setElapsedMs(0)
-    chunkSequenceRef.current = 0
-
     const sessionId = crypto.randomUUID()
-    activeSessionIdRef.current = sessionId
-    setQueueChunks([])
-    setQueueBytes(0)
-    setRecentQueueEvents([])
-
     const draftCreatedAt = Date.now()
     const draft: SessionMeta = {
       id: sessionId,
@@ -376,180 +74,87 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     }
     const created = await createSession(draft)
     if (isErr(created)) {
-      setRecorderError(created.error)
-      setStatus('idle')
+      mic.actions.releaseStream()
+      recorder.actions.markIdle(created.error)
       return
     }
 
-    const recorder = startMediaRecorder(streamRef.current, {
-      onChunk: (blob, mime) => void handleChunk(blob, mime),
-      onStateChange: (recorderState) => {
-        if (recorderState === 'recording') setStatus('recording')
-        else if (recorderState === 'paused') setStatus('paused')
-      },
-      onError: (error) => setRecorderError(error),
-      onStop: (blob, mime) => {
-        const url = URL.createObjectURL(blob)
-        if (pendingBlobUrlRef.current) URL.revokeObjectURL(pendingBlobUrlRef.current)
-        pendingBlobUrlRef.current = url
-        setFinalBlob(blob)
-        setFinalUrl(url)
-        setMimeType(mime)
-        setStatus('stopped')
-        // Flush any in-flight partial as a final segment so a stop that races the
-        // SpeechRecognition flush does not silently drop visible-but-not-finalized text.
-        const trailingPartial = partialTranscriptRef.current.trim()
-        if (trailingPartial) {
-          const segment: TranscriptSegment = {
-            id: crypto.randomUUID(),
-            text: trailingPartial,
-            confidence: 0,
-            finalizedAt: Date.now(),
-          }
-          takeFinalSegmentsRef.current = [...takeFinalSegmentsRef.current, segment]
-          setTranscriptSegments((segments) => [...segments, segment])
-          partialTranscriptRef.current = ''
-          setPartialTranscript('')
-        }
-        onTakeFinalized?.({
+    const result = await recorder.actions.start({
+      stream,
+      sessionId,
+      onStop: ({ blob, mimeType, durationMs }) => {
+        // Idempotent fallback: stopRecording() already runs these synchronously,
+        // but auto-stop and direct stop calls also land here.
+        transcription.actions.flushPartialAsFinal()
+        transcription.actions.teardown()
+        mic.actions.releaseStream()
+        onTakeFinalizedRef.current?.({
           sessionId,
           blob,
-          mimeType: mime,
-          durationMs: accumulatedMsRef.current,
-          transcript: takeFinalSegmentsRef.current,
+          mimeType,
+          durationMs,
+          transcript: transcription.actions.getSegments(),
         })
       },
-    }, CHUNK_TIMESLICE_MS)
+    })
 
-    if (isErr(recorder)) {
-      setRecorderError(recorder.error)
-      setStatus('idle')
+    if (isErr(result)) {
       void deleteSession(sessionId)
+      mic.actions.releaseStream()
       return
     }
 
-    recorderRef.current = recorder.value
-    setMimeType(recorder.value.mimeType)
-    startTimer()
-    beginTranscription()
-  }, [beginTranscription, handleChunk, micProcessing, onTakeFinalized, refreshDevices, selectedDeviceId, startTimer])
+    transcription.actions.begin()
+  }, [exporter.actions, mic.actions, recorder.actions, transcription.actions])
 
   const pauseRecording = useCallback(() => {
-    const handle = recorderRef.current
-    if (!handle) return
-    const result = handle.pause()
-    if (isErr(result)) {
-      setRecorderError(result.error)
-      return
-    }
-    pauseTimer()
-    teardownTranscription()
-  }, [pauseTimer, teardownTranscription])
+    recorder.actions.pause()
+    transcription.actions.teardown()
+  }, [recorder.actions, transcription.actions])
 
   const resumeRecording = useCallback(() => {
-    const handle = recorderRef.current
-    if (!handle) return
-    const result = handle.resume()
-    if (isErr(result)) {
-      setRecorderError(result.error)
-      return
-    }
-    startTimer()
-    beginTranscription()
-  }, [beginTranscription, startTimer])
+    recorder.actions.resume()
+    transcription.actions.begin()
+  }, [recorder.actions, transcription.actions])
 
   const stopRecording = useCallback(() => {
-    const handle = recorderRef.current
-    if (!handle) return
-    const result = handle.stop()
-    if (isErr(result)) {
-      setRecorderError(result.error)
-      return
-    }
-    recorderRef.current = null
-    pauseTimer()
-    teardownTranscription()
-    teardownStream()
-  }, [pauseTimer, teardownStream, teardownTranscription])
-
-  // Auto-stop when the active recording reaches the configured cap so MediaRecorder
-  // can never run unbounded. Fires at most once per take when elapsedMs crosses the threshold.
-  useEffect(() => {
-    if (status !== 'recording') return
-    if (elapsedMs < MAX_RECORDING_MS) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRecorderError(appError(
-      'invalid-state',
-      `Recording stopped at the ${Math.round(MAX_RECORDING_MS / 60_000)}-minute cap.`,
-    ))
-    stopRecording()
-  }, [elapsedMs, status, stopRecording])
-
-  const toggleProcessing = useCallback((option: MicProcessingOption) => {
-    setMicProcessing((current) => ({ ...current, [option]: !current[option] }))
-  }, [])
-
-  const selectDevice = useCallback((deviceId: string) => {
-    setSelectedDeviceId(deviceId)
-    teardownStream()
-  }, [teardownStream])
+    // Tear transcription down synchronously so SpeechRecognition can't keep
+    // emitting partials while MediaRecorder.stop()'s async onstop is still in flight.
+    // The mic stream is intentionally released only after the recorder finishes
+    // flushing (in the onStop callback) — ending the tracks first risks dropping
+    // the in-flight timeslice chunk on browsers that don't flush on track-end.
+    transcription.actions.flushPartialAsFinal()
+    transcription.actions.teardown()
+    recorder.actions.stop()
+  }, [recorder.actions, transcription.actions])
 
   const exportMp3 = useCallback(async () => {
-    if (!finalBlob) return
-    const durationMs = accumulatedMsRef.current
-    if (durationMs > MAX_EXPORT_DURATION_MS) {
-      setExportError(appError(
-        'invalid-state',
-        `MP3 export is capped at ${Math.round(MAX_EXPORT_DURATION_MS / 60_000)} minutes. Trim the recording before exporting.`,
-      ))
-      return
-    }
-    setIsExporting(true)
-    setExportError(null)
-    setExportProgress(0)
+    await exporter.actions.exportMp3(recorder.state.finalBlob, recorder.state.elapsedMs)
+  }, [exporter.actions, recorder.state.elapsedMs, recorder.state.finalBlob])
 
-    const result = await encodeMp3(finalBlob, mp3Settings, setExportProgress)
-    setIsExporting(false)
-    if (isErr(result)) {
-      setExportError(result.error)
-      return
-    }
-
-    setExportProgress(1)
-    downloadBlob(result.value, `recording-${Date.now()}.mp3`)
-  }, [finalBlob, mp3Settings])
-
-  const setBitRate = useCallback((bitRate: Mp3BitRate) => {
-    setMp3Settings((current) => ({ ...current, bitRate }))
-  }, [])
-
-  const setChannelCount = useCallback((channelCount: Mp3ChannelCount) => {
-    setMp3Settings((current) => ({ ...current, channelCount }))
-  }, [])
-
-  const state: PipelineState = {
-    status,
-    mimeType,
-    elapsedMs,
-    micDevices,
-    selectedDeviceId,
-    micProcessing,
-    micError,
-    permissionGranted,
-    recorderError,
-    queueChunks,
-    queueBytes,
-    recentQueueEvents,
-    finalBlob,
-    finalUrl,
-    exportError,
-    exportProgress,
-    isExporting,
-    mp3Settings,
-    transcriptSegments,
-    partialTranscript,
-    transcriptionActive,
-    transcriptionError,
+  const state = {
+    status: recorder.state.status,
+    mimeType: recorder.state.mimeType,
+    elapsedMs: recorder.state.elapsedMs,
+    micDevices: mic.state.micDevices,
+    selectedDeviceId: mic.state.selectedDeviceId,
+    micProcessing: mic.state.micProcessing,
+    micError: mic.state.micError,
+    permissionGranted: mic.state.permissionGranted,
+    recorderError: recorder.state.recorderError,
+    queueChunks: recorder.state.queueChunks,
+    queueBytes: recorder.state.queueBytes,
+    recentQueueEvents: recorder.state.recentQueueEvents,
+    finalBlob: recorder.state.finalBlob,
+    finalUrl: recorder.state.finalUrl,
+    exportError: exporter.state.exportError,
+    exportProgress: exporter.state.exportProgress,
+    isExporting: exporter.state.isExporting,
+    mp3Settings: exporter.state.mp3Settings,
+    transcriptSegments: transcription.state.transcriptSegments,
+    partialTranscript: transcription.state.partialTranscript,
+    transcriptionActive: transcription.state.transcriptionActive,
+    transcriptionError: transcription.state.transcriptionError,
   }
 
   return {
@@ -559,12 +164,12 @@ export function usePipeline(options: UsePipelineOptions = {}) {
       pauseRecording,
       resumeRecording,
       stopRecording,
-      toggleProcessing,
-      selectDevice,
+      toggleProcessing: mic.actions.toggleProcessing,
+      selectDevice: mic.actions.selectDevice,
       exportMp3,
-      setBitRate,
-      setChannelCount,
-      refreshDevices,
+      setBitRate: exporter.actions.setBitRate,
+      setChannelCount: exporter.actions.setChannelCount,
+      refreshDevices: mic.actions.refreshDevices,
     },
   }
 }
