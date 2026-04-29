@@ -16,10 +16,10 @@
   },
   "dependencies": {
     "@mediabunny/mp3-encoder": "^1.40.1",
+    "@xyflow/react": "^12.4.4",
     "mediabunny": "^1.40.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "wavesurfer.js": "^7.11.1"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

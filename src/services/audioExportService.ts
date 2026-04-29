@@ -1,5 +1,5 @@
-/** Handles MP3 export limits and worker-based blob conversion. */
-import { MAX_EXPORT_DURATION_MS } from '../lib/audio'
+/** Drives MP3 encoding via a Web Worker and returns Result. */
+import { appError, err, ok, type AppError, type Result } from '../lib/result'
 import type { Mp3ExportSettings } from './mp3EncoderCore'
 
 type EncoderMessage =
@@ -7,47 +7,35 @@ type EncoderMessage =
   | { type: 'done'; blob: Blob }
   | { type: 'error'; error: string }
 
-const WORKER_PROGRESS_START = 0.04
-const WORKER_PROGRESS_RANGE = 0.94
-
-function formatMaxMinutes() {
-  return Math.round(MAX_EXPORT_DURATION_MS / 60_000)
-}
-
-export async function encodeMp3Blob(
+export async function encodeMp3(
   recordedBlob: Blob,
   settings: Mp3ExportSettings,
-  durationMs: number,
   onProgress: (progress: number) => void,
-) {
-  if (durationMs > MAX_EXPORT_DURATION_MS) {
-    throw new Error(
-      `MP3 export is capped at ${formatMaxMinutes()} minutes in this build. Trim the recording before exporting.`,
-    )
+): Promise<Result<Blob, AppError>> {
+  if (recordedBlob.size === 0) {
+    return err(appError('invalid-state', 'Cannot export an empty recording.'))
   }
 
-  onProgress(WORKER_PROGRESS_START)
+  onProgress(0.04)
 
   const worker = new Worker(new URL('../workers/mp3Encoder.worker.ts', import.meta.url), { type: 'module' })
 
   try {
-    return await new Promise<Blob>((resolve, reject) => {
+    return await new Promise<Result<Blob, AppError>>((resolve) => {
       worker.onmessage = (event: MessageEvent<EncoderMessage>) => {
         if (event.data.type === 'progress') {
-          onProgress(WORKER_PROGRESS_START + event.data.progress * WORKER_PROGRESS_RANGE)
+          onProgress(0.04 + event.data.progress * 0.94)
           return
         }
-
         if (event.data.type === 'error') {
-          reject(new Error(event.data.error))
+          resolve(err(appError('encoding', event.data.error)))
           return
         }
-
-        resolve(event.data.blob)
+        onProgress(1)
+        resolve(ok(event.data.blob))
       }
-
-      worker.onerror = (event) => reject(new Error(event.message || 'MP3 worker failed during encoding.'))
-      worker.onmessageerror = () => reject(new Error('MP3 worker returned an unreadable encoding result.'))
+      worker.onerror = (event) => resolve(err(appError('encoding', event.message || 'MP3 worker failed during encoding.')))
+      worker.onmessageerror = () => resolve(err(appError('encoding', 'MP3 worker returned an unreadable encoding result.')))
       worker.postMessage({ recordedBlob, settings })
     })
   } finally {

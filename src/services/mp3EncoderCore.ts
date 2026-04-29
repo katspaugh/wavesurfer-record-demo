@@ -1,4 +1,4 @@
-/** Defines MP3 export settings. */
+/** MP3 export settings shared between the worker and the host. */
 
 export type Mp3BitRate = 16 | 24 | 32 | 40 | 48 | 64 | 80 | 96 | 112 | 128 | 160 | 192 | 224 | 256 | 320
 export type Mp3ChannelCount = 1 | 2

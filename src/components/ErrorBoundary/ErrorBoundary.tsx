@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import styles from './ErrorBoundary.module.css'
-import { Button } from '../ui'
 
 type ErrorBoundaryProps = {
   children: ReactNode
@@ -39,9 +38,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </div>
             </header>
             <p className={styles.errorBanner}>{this.state.error.message}</p>
-            <Button variant="primary" onClick={this.handleReload}>
+            <button type="button" className={styles.reloadButton} onClick={this.handleReload}>
               Reload
-            </Button>
+            </button>
           </section>
         </main>
       )

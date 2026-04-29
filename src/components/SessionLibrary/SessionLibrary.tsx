@@ -1,73 +1,105 @@
 import { formatBytes, formatDuration } from '../../lib/audio'
-import type { QueueStats, RecordingSession } from '../../types'
+import type { SessionMeta } from '../../lib/db'
+import type { AppError } from '../../lib/result'
 import styles from './SessionLibrary.module.css'
-import { Icon } from '../Icon'
-import { Button, EmptyState, IconButton, StatGrid, StatItem } from '../ui'
 
-type SessionLibraryProps = {
-  queueStats: QueueStats
-  sessions: RecordingSession[]
-  onCreateSession: () => void
-  onOpenSession: (session: RecordingSession) => void
-  onRemoveSession: (sessionId: string) => void
+export type SessionLibraryProps = {
+  sessions: SessionMeta[]
+  loadError: AppError | null
+  recoveryNotice: string | null
+  onDismissRecoveryNotice: () => void
+  onNewRecording: () => void
+  onOpenSession: (id: string) => void
+  onDeleteSession: (id: string) => void
 }
 
-export function SessionLibrary({ queueStats, sessions, onCreateSession, onOpenSession, onRemoveSession }: SessionLibraryProps) {
-  const totalDurationMs = sessions.reduce((total, session) => total + session.durationMs, 0)
-
+export function SessionLibrary({
+  sessions,
+  loadError,
+  recoveryNotice,
+  onDismissRecoveryNotice,
+  onNewRecording,
+  onOpenSession,
+  onDeleteSession,
+}: SessionLibraryProps) {
   return (
-    <main className={styles.appShell}>
-      <section className={styles.sessionLibrary} aria-labelledby="library-title">
-        <header className={styles.libraryHero}>
-          <div>
-            <p className={styles.eyebrow}>React Audio Recorder</p>
-            <h1 className={styles.title} id="library-title">Recording Sessions</h1>
-          </div>
-          <Button className={styles.newSessionButton} variant="primary" onClick={onCreateSession}>
-            <Icon name="record" />
-            New Session
-          </Button>
-        </header>
+    <main className={styles.shell}>
+      <header className={styles.header}>
+        <div className={styles.title}>
+          <p>Recorder pipeline</p>
+          <h1>Sessions</h1>
+        </div>
+        <button type="button" className={styles.newButton} onClick={onNewRecording}>
+          New recording
+        </button>
+      </header>
 
-        <StatGrid ariaLabel="Session summary" variant="library">
-          <StatItem label="Total sessions" value={sessions.length} />
-          <StatItem label="Total duration" value={formatDuration(totalDurationMs)} />
-          <StatItem label="Offline cache" value={formatBytes(queueStats.bytes)} />
-        </StatGrid>
+      {recoveryNotice ? (
+        <div className={styles.recoveryBanner} role="status">
+          <span>{recoveryNotice}</span>
+          <button
+            type="button"
+            className={styles.recoveryDismiss}
+            onClick={onDismissRecoveryNotice}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
-        <div className={styles.sessionList} aria-label="Recording sessions">
-          {sessions.length === 0 ? (
-            <EmptyState
-              variant="library"
-              action={(
-                <Button onClick={onCreateSession}>
-                  <Icon name="record" />
-                  Start Recording
-                </Button>
-              )}
-            >
-              No sessions yet.
-            </EmptyState>
-          ) : (
-            sessions.map((session) => (
-              <article className={styles.sessionCard} key={session.id}>
-                <Button className={styles.sessionOpen} onClick={() => onOpenSession(session)}>
-                  <span className={styles.sessionStatus} data-status={session.status} />
-                  <span>
-                    <strong>{session.title}</strong>
-                    <small>{new Date(session.updatedAt).toLocaleString()}</small>
-                  </span>
+      {loadError ? (
+        <p className={styles.errorBanner} role="alert">
+          {loadError.message}
+        </p>
+      ) : null}
+
+      {sessions.length === 0 ? (
+        <div className={styles.empty}>
+          No saved recordings yet. Press <strong>New recording</strong> to capture one.
+        </div>
+      ) : (
+        <div className={styles.list}>
+          {sessions.map((session) => (
+            <div className={styles.row} key={session.id}>
+              <button
+                type="button"
+                className={styles.rowMain}
+                onClick={() => onOpenSession(session.id)}
+              >
+                <span className={styles.rowTitle}>
+                  {session.title}
+                  {!session.finalized ? <span className={styles.draftBadge}>draft</span> : null}
+                </span>
+                <span className={styles.rowMeta}>
                   <span>{formatDuration(session.durationMs)}</span>
                   <span>{formatBytes(session.size)}</span>
-                </Button>
-                <IconButton aria-label={`Delete ${session.title}`} onClick={() => onRemoveSession(session.id)}>
-                  <Icon name="clear" />
-                </IconButton>
-              </article>
-            ))
-          )}
+                  <span>{session.mimeType}</span>
+                  <span>
+                    {new Date(session.createdAt).toLocaleString(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => onOpenSession(session.id)}
+              >
+                Open
+              </button>
+              <button
+                type="button"
+                className={`${styles.iconButton} ${styles.iconButtonDanger}`}
+                onClick={() => onDeleteSession(session.id)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
         </div>
-      </section>
+      )}
     </main>
   )
 }

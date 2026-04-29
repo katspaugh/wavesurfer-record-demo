@@ -1,154 +1,128 @@
 # Architecture overview
 
-This app is a Vite + React single-page recorder for `wavesurfer.js`'s Record plugin. It keeps session metadata and recorded media in IndexedDB, renders the live waveform in the browser, exports finalized takes to MP3 in a Web Worker, and optionally overlays speech-to-text transcript regions on the waveform.
+A Vite + React single-page app that visualizes its own recording pipeline as a `react-flow` graph. Recording is a from-scratch `getUserMedia` + `MediaRecorder` implementation; preview is a plain `<audio>` element; encoding is offloaded to a Web Worker. There is no waveform engine.
 
-## High-level flow
-
-```mermaid
-flowchart TD
-    Browser[Browser runtime] --> Main[src/main.tsx]
-    Main --> Boundary[ErrorBoundary]
-    Boundary --> App[src/App.tsx]
-    App --> Provider[RecorderProvider]
-    Provider --> Orchestrator[useRecorderApp]
-
-    Orchestrator --> LibraryUI[SessionLibrary]
-    Orchestrator --> RecorderUI[RecorderView]
-    Orchestrator --> Reducer[recorderReducer]
-    Orchestrator --> Persistence[useRecorderPersistence]
-    Orchestrator --> Waveform[useWaveSurferRecorder]
-    Orchestrator --> ExportHook[useMp3Export]
-    Orchestrator --> Transcription[useLiveTranscription]
-
-    Persistence --> IndexedDB[(IndexedDB: sessions / chunks / session_blobs)]
-    Waveform --> WaveSurfer[wavesurfer.js + Record + Regions]
-    Waveform --> IndexedDB
-    Transcription --> SpeechAPI[SpeechRecognition API]
-    ExportHook --> ExportService[audioExportService]
-    ExportService --> Worker[mp3Encoder.worker.ts]
-    Worker --> Mediabunny[Mediabunny + MP3 encoder]
-```
-
-## Hook and service wiring
+## Pipeline
 
 ```mermaid
 flowchart LR
-    AppHook[useRecorderApp]
-    State[recorderReducer]
-    PersistHook[useRecorderPersistence]
-    WaveHook[useWaveSurferRecorder]
-    ExportHook[useMp3Export]
-    TranscriptionHook[useLiveTranscription]
-
-    SessionService[sessionService]
-    SessionRecordingService[sessionRecordingService]
-    AudioExportService[audioExportService]
-    SpeechService[speechRecognitionService]
-    ChunkDb[chunkDb]
-    AudioLib[audio.ts]
-    RecordingService[recordingService]
-    Worker[mp3Encoder.worker.ts]
-
-    AppHook --> State
-    AppHook --> PersistHook
-    AppHook --> WaveHook
-    AppHook --> ExportHook
-    AppHook --> TranscriptionHook
-    AppHook --> SessionService
-    AppHook --> SessionRecordingService
-    AppHook --> ChunkDb
-
-    PersistHook --> ChunkDb
-    PersistHook --> SessionService
-
-    WaveHook --> RecordingService
-    WaveHook --> ChunkDb
-    WaveHook --> AudioLib
-
-    ExportHook --> AudioExportService
-    AudioExportService --> AudioLib
-    AudioExportService --> Worker
-
-    TranscriptionHook --> SpeechService
+    Mic[1. Mic — getUserMedia] --> Recorder[2. MediaRecorder timeline]
+    Recorder -- chunks --> Queue[3. IndexedDB chunk queue]
+    Queue -- virtual blob --> Export[4. Mediabunny → MP3]
+    Recorder -- live audio --> Transcription[5. SpeechRecognition]
 ```
 
-`useRecorderApp` is the coordinator: it composes the other hooks, bridges reducer actions to persistence and waveform side effects, and calls session services for session creation, reopening, reset, and finalization.
+Each numbered node is a `react-flow` node component under `src/components/flow/` that exposes its controls and live state inline. Edges animate while data is flowing.
 
-## Runtime overview
+## Two views
 
-1. `src/main.tsx` mounts the app inside `StrictMode` and wraps it in `ErrorBoundary`.
-2. `src/App.tsx` creates the recorder context with `RecorderProvider`, then switches between the session library and active recorder shell.
-3. `src/hooks/useRecorderApp.ts` is the main orchestration hook. It owns the reducer-driven UI state, session lifecycle, queue stats, waveform control, MP3 export state, and live transcription state.
-4. `src/hooks/useWaveSurferRecorder.ts` creates the `wavesurfer.js` instance plus Record and Regions plugins, listens to record lifecycle events, persists chunked audio, and reloads finalized audio for preview.
-5. `src/hooks/useRecorderPersistence.ts` synchronizes reducer state with IndexedDB-backed session metadata, stored blobs, and chunk statistics.
+- **Session library** (`src/components/SessionLibrary/`) — initial screen. Lists past takes (drafts shown with a `draft` badge), opens or deletes them, starts a fresh recording. Drives `?session=<id>` (or `?session=new`) URL params with `pushState` so back/forward and refresh restore the right view.
+- **Pipeline flow** (`src/components/flow/PipelineFlow.tsx`) — the recorder. Mounted with either `initialSession=null` (fresh take) or a `LoadedSession` carrying its blob + transcript so the audio preview and transcription node light up immediately.
 
-## Module boundaries
+## Result-based core
 
-| Area | Responsibility | Key files |
-| --- | --- | --- |
-| App shell | Mount the provider and choose between session list and recorder UI | `src/main.tsx`, `src/App.tsx` |
-| Context + orchestration | Expose the recorder API to components and coordinate the major hooks | `src/context/*`, `src/hooks/useRecorderApp.ts` |
-| UI components | Render the session library, recorder controls, export controls, and error states | `src/components/**` |
-| State | Define the reducer, actions, and defaults for recorder UI state | `src/state/recorderReducer.ts` |
-| Persistence | Store sessions, chunks, queue stats, and finalized blobs in IndexedDB | `src/lib/chunkDb.ts`, `src/hooks/useRecorderPersistence.ts` |
-| Recording services | Shape sessions, rebuild blobs from cached chunks, and prepare/finalize recordings | `src/services/sessionService.ts`, `src/services/sessionRecordingService.ts`, `src/services/recordingService.ts` |
-| Export pipeline | Convert the recorded blob to MP3 in a worker-backed Mediabunny pipeline | `src/services/audioExportService.ts`, `src/services/mp3EncoderCore.ts`, `src/workers/mp3Encoder.worker.ts` |
-| Transcription | Integrate browser speech recognition and turn phrases into timed waveform regions | `src/hooks/useLiveTranscription.ts`, `src/services/speechRecognitionService.ts` |
+Every async/IO surface returns `Result<T, AppError>` from `src/lib/result.ts`. Callers branch on `result.ok` instead of `try/catch`. `AppError` carries a structured `code` (`unsupported`, `permission-denied`, `not-found`, `in-use`, `aborted`, `invalid-state`, `storage`, `encoding`, `speech`, `unknown`) plus `message` and an optional `cause`.
 
-## Recording and persistence flow
+| Module | Responsibility |
+| --- | --- |
+| `src/services/micService.ts` | `listMicrophones`, `requestMicrophoneStream`, `stopStream`. Wraps `navigator.mediaDevices` and classifies platform errors into `AppError`. |
+| `src/services/mediaRecorderService.ts` | `startMediaRecorder` builds a `RecorderHandle` whose `pause/resume/stop` each return a `Result`. Picks the best supported MIME type and emits 5 s timesliced chunks. |
+| `src/lib/db.ts` | Single IndexedDB database (`recording-sessions`) with two stores: `sessions` (metadata) and `chunks` (blob rows indexed by `sessionId`). Chunks are the source of truth — no separate finalized-blob store. |
+| `src/services/audioExportService.ts` | `encodeMp3` posts the recorded blob to a Web Worker that runs Mediabunny + `@mediabunny/mp3-encoder` and returns a `Result<Blob, AppError>`. |
+| `src/services/speechRecognitionService.ts` | `startLiveTranscription` spawns the browser `SpeechRecognition`, restarts it on natural ends, and surfaces partial / final / error events. |
 
-1. Creating a session stores draft metadata in IndexedDB and switches the UI into recorder mode.
-2. Starting recording configures microphone processing options, starts `wavesurfer.js` recording, and enables live transcription.
-3. Each `record-data-available` event is converted into a stored chunk and written into the `chunks` object store. Queue statistics and per-session chunk metadata are refreshed after each successful write.
-4. When recording ends, the app rebuilds a complete blob from cached chunks, stores the finalized blob in `session_blobs`, clears the temporary chunk queue for that session, and updates session metadata to `stopped`.
-5. Reopening a session reloads either the finalized blob or a reconstructed in-progress blob and redraws transcript regions on the waveform.
+## Storage model
 
-## User flow (happy path)
-
-```mermaid
-flowchart TD
-    Open[Open app] --> Library[Session library view]
-    Library --> Create[Create new session]
-    Create --> Recorder[Recorder view]
-    Recorder --> Start[Start recording]
-    Start --> Capture[Waveform updates + chunks saved + live transcription]
-    Capture --> Pause{Pause?}
-    Pause -->|Yes| Resume[Resume recording]
-    Resume --> Capture
-    Pause -->|No| Finish[Finish recording]
-    Finish --> Finalize[Rebuild final blob and save session]
-    Finalize --> Preview[Preview waveform and audio]
-    Preview --> Export{Export MP3?}
-    Export -->|Yes| Encode[Decode audio and encode in worker]
-    Encode --> Download[Download MP3]
-    Export -->|No| Sessions[Return to session library]
-    Download --> Sessions
-    Sessions --> Reopen[Reopen saved session later]
-    Reopen --> Preview
+```
+recording-sessions (IndexedDB, v3)
+├── sessions            keyPath: id           index: createdAt
+│     SessionMeta { id, title, createdAt, updatedAt,
+│                   durationMs, size, mimeType,
+│                   transcript[], finalized }
+└── chunks              keyPath: id           index: sessionId, sequence, createdAt
+      StoredChunk { id, sessionId, sequence,
+                    createdAt, size, type, blob }
 ```
 
-## Data storage model
+- A session row is created when recording starts (`finalized: false`) and updated when stop fires (`finalized: true` plus duration/size/mime/transcript).
+- Each `MediaRecorder.ondataavailable` writes one chunk row tagged with the active `sessionId`.
+- **Chunks are never cleared on export.** They are the canonical bytes for the take.
+- `loadSession(id)` reads the metadata, fetches all chunks via the `sessionId` index, and builds a virtual `new Blob([...chunks])` (reference-concat — the browser does not copy bytes). Mediabunny reads ranges of that blob inside the worker.
+- `deleteSession(id)` runs one transaction across both stores so metadata + chunks are removed atomically.
 
-`src/lib/chunkDb.ts` manages one IndexedDB database named `field-recorder` with three stores:
+### Crash recovery
 
-- `sessions` stores `RecordingSession` metadata such as title, status, MIME type, duration, chunk count, and transcript data.
-- `chunks` stores in-progress `StoredChunk` records keyed by chunk id and indexed by `sessionId`.
-- `session_blobs` stores finalized blobs separately from metadata so completed recordings remain available without duplicating chunk data.
+`reconcileSessions()` runs on app mount and handles two anomalies in one pass:
 
-This split lets the app recover interrupted sessions, show queue statistics, and avoid keeping both the finalized blob and the full temporary chunk queue after a take is finished.
+- **Orphan chunks** — chunks whose `sessionId` has no matching session row. Promoted into a draft session titled `Recovered recording — {timestamp}`.
+- **Empty drafts** — sessions with `finalized: false` and zero chunks. Deleted as failed-start residue.
 
-## Export and transcription details
+This means a tab crash mid-recording becomes "the take shows up in the library on next visit," limited only by the `MediaRecorder` timeslice (5 s today, so up to ~5 s of trailing buffer is lost).
 
-- MP3 export is deliberately offloaded to `src/workers/mp3Encoder.worker.ts`. The worker uses Mediabunny to read the recorded blob and `@mediabunny/mp3-encoder` to write an MP3 without using Web Audio on the main thread.
-- Live transcription depends on the browser `SpeechRecognition` / `webkitSpeechRecognition` API. Transcript segments are persisted on the session and rendered as non-editable waveform regions.
-- Transcript timing is estimated from recorder elapsed time, so regions are useful for navigation and context rather than word-perfect alignment.
+## Orchestration
+
+`src/hooks/usePipeline.ts` owns state for all five nodes and the recorder lifecycle:
+
+- mic device list, selected device, processing toggles, mic error
+- recorder status, mime type, elapsed time, recorder error
+- queue chunks (read from IDB on open, appended to during live recording), byte total, recent enqueue events
+- final blob + object URL, MP3 settings, export progress and error
+- transcript segments, current partial, transcription error
+
+It accepts `{ initialSession?: LoadedSession; onTakeFinalized?: (take) => void }`. When `initialSession` is provided the hook seeds preview state and pulls the queue snapshot. When a fresh recording stops it fires `onTakeFinalized` with the assembled blob + sessionId so `App` can finalize the session row.
+
+## App routing & URL params
+
+`App.tsx` is the view switch:
+
+| URL | View |
+| --- | --- |
+| (none) | Session library |
+| `?session=new` | Fresh `PipelineFlow` |
+| `?session=<id>` | `PipelineFlow` opened on `<id>` (404 falls back to library) |
+
+- `pushState` for user-initiated nav (open/back/new), `replaceState` after a fresh take is finalized so a refresh restores the just-recorded take instead of restarting blank.
+- `popstate` is wired so browser back/forward replays the corresponding view.
+
+## File layout
+
+```
+src/
+  App.tsx                       # view switch + URL sync
+  main.tsx                      # ErrorBoundary + StrictMode
+  styles.css                    # paper / ink theme variables
+  types.ts                      # RecordingStatus, TranscriptSegment
+  lib/
+    result.ts                   # Result<T, E>, AppError, helpers
+    db.ts                       # sessions + chunks (Result-based)
+    audio.ts                    # formatDuration, formatBytes, downloadBlob
+  services/
+    micService.ts
+    mediaRecorderService.ts
+    audioExportService.ts
+    mp3EncoderCore.ts           # Mp3ExportSettings, defaults
+    speechRecognitionService.ts
+  hooks/
+    usePipeline.ts              # single orchestrator hook
+  components/
+    ErrorBoundary/
+    SessionLibrary/             # initial library view
+    flow/
+      PipelineFlow.tsx          # nodes + edges + ReactFlow shell
+      MicNode.tsx
+      RecorderNode.tsx
+      QueueNode.tsx
+      ExportNode.tsx
+      TranscriptionNode.tsx
+      nodeStyles.module.css
+  workers/mp3Encoder.worker.ts
+  test/                         # Vitest suites
+```
 
 ## Tooling
 
-- **Package manager:** Yarn 1 (`packageManager` is pinned in `package.json`)
-- **Dev server and bundling:** Vite with the React plugin
-- **Type checking:** TypeScript in strict mode with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`
-- **Linting:** ESLint + `typescript-eslint`
-- **Testing:** Vitest
-- **CSS module typings:** `typed-css-modules`
-- **Task runner:** The root `Makefile` wraps common Yarn workflows with `make install`, `make run`, and `make build`
+- Vite 7 + React 19, TypeScript strict (incl. `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`).
+- `@xyflow/react` 12 for the flow chart, `mediabunny` + `@mediabunny/mp3-encoder` for export.
+- ESLint with `typescript-eslint` and the React Compiler hooks plugin.
+- Vitest + `fake-indexeddb` for the storage tests.
+- `make install`, `make run`, `make build`, `make test`, `make typecheck` wrap the Yarn scripts.
