@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import 'fake-indexeddb/auto'
+import { StrictMode } from 'react'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LoadedSession, StoredChunk } from '../lib/db'
@@ -217,6 +218,19 @@ describe('useRecorder', () => {
     expect(onStop).toHaveBeenCalledTimes(1)
     const stopArg = onStop.mock.calls[0]?.[0] as { mimeType: string }
     expect(stopArg.mimeType).toMatch(/^audio\/webm/)
+  })
+
+  it('stop() still finalizes after a StrictMode synthetic remount', async () => {
+    const onStop = vi.fn()
+    const { result } = renderHook(() => useRecorder(), { wrapper: StrictMode })
+    await act(async () => {
+      await result.current.actions.start({ stream: fakeStream, sessionId: 'sx', onStop })
+    })
+
+    act(() => result.current.actions.stop())
+
+    expect(result.current.state.status).toBe('stopped')
+    expect(onStop).toHaveBeenCalledTimes(1)
   })
 
   it('returns an error from start() when MediaRecorder cannot be created', async () => {

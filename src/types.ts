@@ -1,4 +1,11 @@
-export type RecordingStatus = 'idle' | 'requesting-mic' | 'recording' | 'paused' | 'stopped' | 'exporting'
+export type RecordingStatus =
+  | 'idle'
+  | 'requesting-mic'
+  | 'recording'
+  | 'paused'
+  | 'stopping'
+  | 'stopped'
+  | 'exporting'
 
 export type TranscriptSegment = {
   id: string

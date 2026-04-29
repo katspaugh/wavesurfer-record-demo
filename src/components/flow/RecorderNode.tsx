@@ -17,6 +17,7 @@ export function RecorderNode({ data }: { data: RecorderNodeData }) {
   const { state, onStart, onPause, onResume, onStop } = data
   const isRecording = state.status === 'recording'
   const isPaused = state.status === 'paused'
+  const isStopping = state.status === 'stopping'
   const isStopped = state.status === 'stopped'
   const isStartable = state.status === 'idle' || isStopped
   const fillRatio = Math.min(1, state.elapsedMs / TIMELINE_WINDOW_MS)
@@ -25,7 +26,7 @@ export function RecorderNode({ data }: { data: RecorderNodeData }) {
     ? styles.statusErr
     : isRecording
       ? styles.statusOk
-      : isPaused
+      : isPaused || isStopping
         ? styles.statusWarn
         : styles.statusIdle
 
@@ -39,7 +40,15 @@ export function RecorderNode({ data }: { data: RecorderNodeData }) {
       <div className={styles.statusRow}>
         <span className={`${styles.statusDot} ${dotClass}`} />
         <span>
-          {isRecording ? 'Recording' : isPaused ? 'Paused' : isStopped ? 'Take ready' : 'Idle'}
+          {isRecording
+            ? 'Recording'
+            : isPaused
+              ? 'Paused'
+              : isStopping
+                ? 'Stopping…'
+                : isStopped
+                  ? 'Take ready'
+                  : 'Idle'}
         </span>
       </div>
       <p>
@@ -86,7 +95,7 @@ export function RecorderNode({ data }: { data: RecorderNodeData }) {
               onClick={onStop}
               disabled={!isRecording && !isPaused}
             >
-              Stop
+              {isStopping ? 'Stopping…' : 'Stop'}
             </button>
           </>
         )}
