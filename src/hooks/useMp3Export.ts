@@ -24,6 +24,7 @@ type Action =
   | { type: 'export-progress'; progress: number }
   | { type: 'export-success' }
   | { type: 'export-failure'; error: AppError }
+  | { type: 'reset-export-status' }
 
 const initialState: Mp3ExportState = {
   mp3Settings: DEFAULT_MP3_EXPORT_SETTINGS,
@@ -46,6 +47,8 @@ function reducer(state: Mp3ExportState, action: Action): Mp3ExportState {
       return { ...state, isExporting: false, exportProgress: 1, exportError: null }
     case 'export-failure':
       return { ...state, isExporting: false, exportError: action.error }
+    case 'reset-export-status':
+      return { ...state, exportProgress: 0, exportError: null, isExporting: false }
   }
 }
 
@@ -59,6 +62,8 @@ export function useMp3Export() {
   const setChannelCount = useCallback((channelCount: Mp3ChannelCount) => {
     dispatch({ type: 'set-channel-count', channelCount })
   }, [])
+
+  const resetExportStatus = useCallback(() => dispatch({ type: 'reset-export-status' }), [])
 
   const exportMp3 = useCallback(async (blob: Blob | null, durationMs: number) => {
     if (!blob) return
@@ -87,6 +92,6 @@ export function useMp3Export() {
 
   return {
     state,
-    actions: { exportMp3, setBitRate, setChannelCount },
+    actions: { exportMp3, setBitRate, setChannelCount, resetExportStatus },
   }
 }

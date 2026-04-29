@@ -42,6 +42,7 @@ const MAX_QUEUE_EVENTS = 8
 type Action =
   | { type: 'mark-requesting-mic' }
   | { type: 'mark-idle' }
+  | { type: 'mark-idle-with-error'; error: AppError }
   | { type: 'recorder-started' }
   | { type: 'recorder-paused' }
   | { type: 'recorder-resumed' }
@@ -80,6 +81,8 @@ function reducer(state: RecorderSliceState, action: Action): RecorderSliceState 
       return { ...state, status: 'requesting-mic', recorderError: null }
     case 'mark-idle':
       return { ...state, status: 'idle' }
+    case 'mark-idle-with-error':
+      return { ...state, status: 'idle', recorderError: action.error }
     case 'recorder-started':
       return { ...state, status: 'recording' }
     case 'recorder-paused':
@@ -145,6 +148,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const accumulatedMsRef = useRef(initialSession?.durationMs ?? 0)
   const pendingBlobUrlRef = useRef<string | null>(state.finalUrl)
   const onStopRef = useRef<StartArgs['onStop']>(undefined)
+  const unmountedRef = useRef(false)
 
   // Load the queue snapshot for a seeded session so the queue node reflects what's on disk.
   useEffect(() => {
@@ -172,6 +176,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   }, [initialSession])
 
   useEffect(() => () => {
+    unmountedRef.current = true
     recorderRef.current?.stop()
     recorderRef.current = null
     if (tickRef.current !== null) {
@@ -268,6 +273,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       },
       onError: (error) => dispatch({ type: 'recorder-error', error }),
       onStop: (blob, mime) => {
+        // MediaRecorder.onstop is async; if the host unmounted while we were waiting,
+        // skip URL minting + state updates so we don't leak an unrevoked Blob URL.
+        if (unmountedRef.current) return
         const url = URL.createObjectURL(blob)
         if (pendingBlobUrlRef.current) URL.revokeObjectURL(pendingBlobUrlRef.current)
         pendingBlobUrlRef.current = url
@@ -323,7 +331,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   }, [pauseTimer])
 
   const markRequestingMic = useCallback(() => dispatch({ type: 'mark-requesting-mic' }), [])
-  const markIdle = useCallback(() => dispatch({ type: 'mark-idle' }), [])
+  const markIdle = useCallback((error?: AppError) => {
+    dispatch(error ? { type: 'mark-idle-with-error', error } : { type: 'mark-idle' })
+  }, [])
 
   // Auto-stop when the active recording reaches the configured cap.
   useEffect(() => {

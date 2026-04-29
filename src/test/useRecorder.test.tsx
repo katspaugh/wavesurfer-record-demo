@@ -242,6 +242,13 @@ describe('useRecorder', () => {
     expect(result.current.state.status).toBe('idle')
   })
 
+  it('markIdle propagates an external error into recorderError', () => {
+    const { result } = renderHook(() => useRecorder())
+    act(() => result.current.actions.markIdle({ code: 'storage', message: 'no disk' }))
+    expect(result.current.state.status).toBe('idle')
+    expect(result.current.state.recorderError?.code).toBe('storage')
+  })
+
   it('auto-stops once elapsedMs crosses MAX_RECORDING_MS', async () => {
     vi.useFakeTimers()
     try {

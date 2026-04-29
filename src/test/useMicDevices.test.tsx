@@ -22,6 +22,11 @@ const stopMock = vi.mocked(stopStream)
 type DeviceChangeListener = () => void
 let deviceChangeListeners: DeviceChangeListener[] = []
 
+const originalMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis.navigator,
+  'mediaDevices',
+)
+
 beforeEach(() => {
   listMock.mockReset()
   requestMock.mockReset()
@@ -44,6 +49,11 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  if (originalMediaDevicesDescriptor) {
+    Object.defineProperty(globalThis.navigator, 'mediaDevices', originalMediaDevicesDescriptor)
+  } else {
+    Reflect.deleteProperty(globalThis.navigator, 'mediaDevices')
+  }
 })
 
 describe('useMicDevices', () => {

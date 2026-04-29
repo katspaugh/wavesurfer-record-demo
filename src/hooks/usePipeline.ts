@@ -44,6 +44,7 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   const startRecording = useCallback(async () => {
     recorder.actions.markRequestingMic()
     transcription.actions.resetForNewTake()
+    exporter.actions.resetExportStatus()
 
     const stream = await mic.actions.acquireStream()
     if (!stream) {
@@ -66,7 +67,8 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     }
     const created = await createSession(draft)
     if (isErr(created)) {
-      recorder.actions.markIdle()
+      mic.actions.releaseStream()
+      recorder.actions.markIdle(created.error)
       return
     }
 
@@ -74,6 +76,8 @@ export function usePipeline(options: UsePipelineOptions = {}) {
       stream,
       sessionId,
       onStop: ({ blob, mimeType, durationMs }) => {
+        // Idempotent fallback: stopRecording() already runs these synchronously,
+        // but auto-stop and direct stop calls also land here.
         transcription.actions.flushPartialAsFinal()
         transcription.actions.teardown()
         mic.actions.releaseStream()
@@ -94,7 +98,7 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     }
 
     transcription.actions.begin()
-  }, [mic.actions, onTakeFinalized, recorder.actions, transcription.actions])
+  }, [exporter.actions, mic.actions, onTakeFinalized, recorder.actions, transcription.actions])
 
   const pauseRecording = useCallback(() => {
     recorder.actions.pause()
@@ -107,8 +111,13 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   }, [recorder.actions, transcription.actions])
 
   const stopRecording = useCallback(() => {
+    // Tear transcription + mic down synchronously so SpeechRecognition can't keep
+    // emitting partials while MediaRecorder.stop()'s async onstop is still in flight.
+    transcription.actions.flushPartialAsFinal()
+    transcription.actions.teardown()
+    mic.actions.releaseStream()
     recorder.actions.stop()
-  }, [recorder.actions])
+  }, [mic.actions, recorder.actions, transcription.actions])
 
   const exportMp3 = useCallback(async () => {
     await exporter.actions.exportMp3(recorder.state.finalBlob, recorder.state.elapsedMs)

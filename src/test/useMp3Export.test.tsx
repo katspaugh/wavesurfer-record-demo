@@ -101,6 +101,24 @@ describe('useMp3Export', () => {
     expect(result.current.state.exportError?.code).toBe('encoding')
   })
 
+  it('resetExportStatus clears progress, isExporting, and error', async () => {
+    encodeMp3Mock.mockResolvedValue({
+      ok: false,
+      error: { code: 'encoding', message: 'boom' },
+    })
+    const { result } = renderHook(() => useMp3Export())
+
+    await act(async () => {
+      await result.current.actions.exportMp3(new Blob(['source']), 60_000)
+    })
+    expect(result.current.state.exportError?.code).toBe('encoding')
+
+    act(() => result.current.actions.resetExportStatus())
+    expect(result.current.state.exportError).toBeNull()
+    expect(result.current.state.exportProgress).toBe(0)
+    expect(result.current.state.isExporting).toBe(false)
+  })
+
   it('forwards encodeMp3 progress to exportProgress', async () => {
     let captured: ((p: number) => void) | undefined
     encodeMp3Mock.mockImplementation(async (_blob, _settings, onProgress) => {
