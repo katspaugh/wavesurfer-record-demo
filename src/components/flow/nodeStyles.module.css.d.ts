@@ -18,7 +18,6 @@ declare const styles: {
   readonly "queueArrowOut": string;
   readonly "queueHead": string;
   readonly "queueLog": string;
-  readonly "queueLogRow": string;
   readonly "queueRow": string;
   readonly "recordDot": string;
   readonly "select": string;

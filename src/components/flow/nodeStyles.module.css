@@ -163,14 +163,14 @@
 }
 
 .buttonDanger:hover:not(:disabled) {
-  background: #92341e;
+  background: var(--clay-deep);
 }
 
 .errorBox {
   background: rgba(185, 77, 52, 0.12);
   border: 1px solid rgba(185, 77, 52, 0.4);
   border-radius: 8px;
-  color: #6e2616;
+  color: var(--clay-ink);
   font-size: 13px;
   margin-top: 10px;
   padding: 7px 10px;
@@ -256,17 +256,8 @@
   padding-right: 4px;
 }
 
-.queueLogRow {
-  align-items: center;
-  display: flex;
-  gap: 6px;
-  justify-content: space-between;
-  padding: 2px 0;
-}
-
 .queueArrowIn { color: var(--green); }
 .queueArrowOut { color: var(--clay); }
-.queueLogRow { display: none; }
 
 .transcriptList {
   font-size: 14px;

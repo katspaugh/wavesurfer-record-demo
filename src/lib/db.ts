@@ -36,34 +36,35 @@ const SESSION_INDEX = 'sessionId'
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
+function applyV3Schema(database: IDBDatabase) {
+  // Drop the legacy single-store schema from the v1/v2 prototypes — that data
+  // never followed the sessionId convention, so there is nothing to migrate.
+  for (const name of Array.from(database.objectStoreNames)) {
+    database.deleteObjectStore(name)
+  }
+  const sessionsStore = database.createObjectStore(SESSIONS_STORE, { keyPath: 'id' })
+  sessionsStore.createIndex('createdAt', 'createdAt', { unique: false })
+  const chunksStore = database.createObjectStore(CHUNKS_STORE, { keyPath: 'id' })
+  chunksStore.createIndex(SESSION_INDEX, 'sessionId', { unique: false })
+  chunksStore.createIndex('sequence', 'sequence', { unique: false })
+  chunksStore.createIndex('createdAt', 'createdAt', { unique: false })
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   if (databasePromise) return databasePromise
   // Drop the cached promise on rejection so a transient failure (blocked, quota, private mode)
   // doesn't leave the app stuck reusing a poisoned promise forever.
   databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const database = request.result
-      // Drop legacy stores that don't match the current shape.
-      for (const name of Array.from(database.objectStoreNames)) {
-        if (name !== SESSIONS_STORE && name !== CHUNKS_STORE) {
-          database.deleteObjectStore(name)
-        }
+      const oldVersion = event.oldVersion ?? 0
+      // Apply migrations cumulatively from the user's stored version up to DB_VERSION.
+      // Future schema bumps should add another `if (oldVersion < N)` block that performs
+      // an incremental migration rather than rewriting the stores wholesale.
+      if (oldVersion < 3) {
+        applyV3Schema(database)
       }
-      if (database.objectStoreNames.contains(CHUNKS_STORE)) {
-        database.deleteObjectStore(CHUNKS_STORE)
-      }
-      if (database.objectStoreNames.contains(SESSIONS_STORE)) {
-        database.deleteObjectStore(SESSIONS_STORE)
-      }
-
-      const sessionsStore = database.createObjectStore(SESSIONS_STORE, { keyPath: 'id' })
-      sessionsStore.createIndex('createdAt', 'createdAt', { unique: false })
-
-      const chunksStore = database.createObjectStore(CHUNKS_STORE, { keyPath: 'id' })
-      chunksStore.createIndex(SESSION_INDEX, 'sessionId', { unique: false })
-      chunksStore.createIndex('sequence', 'sequence', { unique: false })
-      chunksStore.createIndex('createdAt', 'createdAt', { unique: false })
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed.'))
