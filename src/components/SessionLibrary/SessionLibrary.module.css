@@ -1,149 +1,192 @@
-.appShell {
-  width: min(1180px, calc(100% - 32px));
+.shell {
   margin: 0 auto;
-  padding: 32px 0;
+  max-width: 880px;
+  padding: 48px 24px 64px;
 }
 
-.sessionLibrary {
-  min-height: calc(100vh - 64px);
-  padding: 28px;
-  border: 1px solid rgba(23, 33, 29, 0.12);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(255, 250, 241, 0.97), rgba(233, 226, 211, 0.94)),
-    repeating-linear-gradient(0deg, transparent 0 31px, rgba(23, 33, 29, 0.04) 31px 32px);
-  box-shadow: var(--shadow);
-}
-
-.libraryHero {
+.header {
+  align-items: flex-end;
   display: flex;
-  align-items: center;
+  gap: 24px;
   justify-content: space-between;
-  gap: 16px;
+  margin-bottom: 28px;
 }
 
-.newSessionButton {
-  min-width: 178px;
+.title h1 {
+  font-family: Georgia, Cambria, 'Times New Roman', serif;
+  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  margin: 4px 0 0;
 }
 
-.eyebrow {
-  margin: 0 0 7px;
+.title p {
   color: var(--clay);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
+  margin: 0;
   text-transform: uppercase;
 }
 
-.title {
-  margin: 0;
-  font-family: Georgia, Cambria, Times New Roman, serif;
-  font-size: clamp(2.3rem, 6vw, 5.5rem);
-  line-height: 0.94;
-}
-
-.sessionList {
-  display: grid;
-  gap: 10px;
-}
-
-.sessionCard {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.sessionOpen {
-  display: grid;
-  grid-template-columns: auto minmax(160px, 1fr) 104px 94px;
-  justify-content: stretch;
-  min-width: 0;
-  min-height: 70px;
-  padding: 12px 14px;
-  text-align: left;
-}
-
-.sessionOpen > span {
-  min-width: 0;
-}
-
-.sessionOpen > span:nth-child(3),
-.sessionOpen > span:nth-child(4) {
-  text-align: right;
-}
-
-.sessionOpen strong,
-.sessionOpen small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sessionOpen small {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.sessionStatus {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.sessionStatus[data-status='draft'] {
-  background: var(--amber);
-}
-
-.sessionStatus[data-status='recording'] {
-  background: var(--clay);
-}
-
-.sessionStatus[data-status='paused'] {
-  background: var(--blue);
-}
-
-.sessionStatus[data-status='stopped'] {
+.newButton {
   background: var(--green);
+  border: none;
+  border-radius: 10px;
+  color: var(--panel);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 12px 22px;
+  text-transform: uppercase;
+  transition: background 120ms ease;
 }
 
-@media (max-width: 900px) {
-  .appShell {
-    width: min(100% - 20px, 720px);
-    padding: 10px 0;
-  }
-
-  .sessionLibrary {
-    padding: 18px;
-  }
-
-  .sessionOpen {
-    grid-template-columns: auto minmax(120px, 1fr) 82px;
-  }
-
-  .sessionOpen > span:nth-child(4) {
-    display: none;
-  }
+.newButton:hover {
+  background: var(--green-deep);
 }
 
-@media (max-width: 560px) {
-  .libraryHero {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.empty {
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 34px;
+  text-align: center;
+}
 
-  .sessionCard {
-    grid-template-columns: 1fr;
-  }
+.list {
+  display: grid;
+  gap: 16px;
+}
 
-  .sessionOpen {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
+.row {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr auto auto;
+  padding: 18px 22px;
+}
 
-  .sessionOpen > span:nth-child(3) {
-    display: none;
-  }
+.rowMain {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.rowMain:hover .rowTitle {
+  color: var(--green-deep);
+}
+
+.rowTitle {
+  align-items: center;
+  display: flex;
+  font-size: 17px;
+  font-weight: 700;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.draftBadge {
+  background: rgba(213, 169, 79, 0.22);
+  border-radius: 4px;
+  color: #5b4517;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  text-transform: uppercase;
+}
+
+.rowMeta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.rowMeta span + span::before {
+  content: '·';
+  margin: 0 6px;
+}
+
+.iconButton {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 8px 12px;
+  text-transform: uppercase;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.iconButton:hover {
+  background: rgba(23, 33, 29, 0.05);
+  color: var(--ink);
+}
+
+.iconButtonDanger:hover {
+  background: rgba(185, 77, 52, 0.12);
+  color: var(--clay);
+}
+
+.recoveryBanner {
+  align-items: center;
+  background: rgba(213, 169, 79, 0.18);
+  border: 1px solid rgba(213, 169, 79, 0.5);
+  border-radius: 10px;
+  color: #5b4517;
+  display: flex;
+  font-size: 13px;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+}
+
+.recoveryDismiss {
+  background: transparent;
+  border: 1px solid rgba(213, 169, 79, 0.6);
+  border-radius: 6px;
+  color: #5b4517;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 5px 10px;
+  text-transform: uppercase;
+}
+
+.recoveryDismiss:hover {
+  background: rgba(213, 169, 79, 0.18);
+}
+
+.errorBanner {
+  background: rgba(185, 77, 52, 0.12);
+  border: 1px solid rgba(185, 77, 52, 0.4);
+  border-radius: 10px;
+  color: #6e2616;
+  font-size: 13px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
 }

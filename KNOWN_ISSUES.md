@@ -1,23 +1,46 @@
 # Known Issues
 
-This document captures open follow-up items called out during the review of [PR #1](https://github.com/katspaugh/wavesurfer-record-demo/pull/1), based on [issue comment 4304584021](https://github.com/katspaugh/wavesurfer-record-demo/pull/1#issuecomment-4304584021).
+Open follow-up items for the current architecture (single `recording-sessions` IndexedDB, `react-flow` UI, `Result<T, AppError>` core). Resolved items from earlier reviews are not repeated here — most of the original list referenced files that no longer exist.
 
-It is intentionally focused on unresolved items. CSS module declaration drift is not listed here because this branch now generates and checks those typings automatically.
-
-## Open follow-up items
+## IndexedDB
 
 | Area | Files | Issue |
 | --- | --- | --- |
-| IndexedDB bootstrap | `src/lib/chunkDb.ts` | `openDatabase()` keeps a module-level `databasePromise`. If the first open fails, later calls reuse the failed promise instead of retrying. |
-| IndexedDB migration | `src/lib/chunkDb.ts` | The `onupgradeneeded` migration path deserves another pass for cursor error handling and explicit behavior from older DB versions. |
-| Large-session memory use | `src/lib/chunkDb.ts` | Chunk listing paths read entire result sets into memory, which may become expensive for very long sessions. |
-| Fresh-record reset safety | `src/services/sessionRecordingService.ts` | `prepareSessionForFreshRecording()` deletes cached audio before persisting the reset session metadata, so a crash in between can leave storage inconsistent. |
-| Reducer URL lifecycle | `src/state/recorderReducer.ts` | Recorded URL replacement should continue to be reviewed for object URL revocation so repeated takes do not leak browser memory. |
-| Reducer exhaustiveness | `src/state/recorderReducer.ts` | The reducer has no exhaustiveness guard for newly added action types. |
-| Global cache clearing | `src/hooks/useRecorderApp.ts` | `clearOfflineQueue()` clears all chunks when there is no active session, which may wipe unrelated session data. |
-| Export cancellation | `src/services/audioExportService.ts`, `src/hooks/useMp3Export.ts` | MP3 export has no timeout or abort path, so a stalled worker can leave the UI stuck in an exporting state. |
-| Recording/export limits | `README.md`, `src/lib/audio.ts`, `src/services/audioExportService.ts` | The 4 hour recording limit and 2 hour export limit are intentionally different in code, but they should keep a clear user-facing explanation and failure mode. |
-| Transcription recovery | `src/services/speechRecognitionService.ts`, `src/hooks/useLiveTranscription.ts` | Only `no-speech` is treated as recoverable. Network failures still end live transcription without retry logic. |
-| Segmented control accessibility | `src/components/ui/SegmentedControl.tsx` | The radiogroup-style control still needs a full ARIA keyboard-interaction review. |
-| Async fire-and-forget auditing | `src/App.tsx`, `src/components/RecorderView.tsx`, `src/hooks/useRecorderApp.ts` | `void`-discarded async calls should keep being audited so operational errors are surfaced through reducer state or an error boundary. |
-| Test realism | `src/test/App.test.tsx`, `src/test/RecorderView.test.tsx` | The MediaRecorder stub is minimal and some UI interaction tests still use `fireEvent`, so they may miss browser-realistic interaction failures. |
+| Bootstrap retry | `src/lib/db.ts` | `openDatabase()` caches a module-level `databasePromise`. If the first open fails (private mode, quota, blocked upgrade), later calls keep reusing the failed promise instead of retrying. |
+| Upgrade handler | `src/lib/db.ts` | The `onupgradeneeded` path drops any legacy stores from earlier versions wholesale. Acceptable for this demo but a real upgrade strategy would migrate prior data instead of nuking it. |
+| Large-session memory | `src/lib/db.ts` | `loadSession` and `listChunksForSession` use `getAll`, materializing every chunk row into JS at once. Fine for short takes; long recordings would benefit from a cursor-based read or worker-side range reads. |
+| Quota exhaustion | `src/lib/db.ts`, `src/hooks/usePipeline.ts` | There is no detection or user-facing surface for `QuotaExceededError` during `saveChunk`. A long take on a near-full origin will start failing silently with a `storage` error code. |
+
+## Recording lifecycle
+
+| Area | Files | Issue |
+| --- | --- | --- |
+| Crash recovery boundary | `src/services/mediaRecorderService.ts` | `MediaRecorder` is started with a 5 s timeslice. Audio captured between the last `ondataavailable` boundary and a tab crash never reaches IndexedDB. Lowering `CHUNK_TIMESLICE_MS` tightens the loss window at the cost of more IDB writes. |
+| Draft accumulation | `src/lib/db.ts`, `src/components/SessionLibrary/` | Repeated mid-recording crashes produce a draft session per visit. There is no automatic prune of old drafts and no UI affordance other than manual delete. |
+| No resume into a draft | `src/hooks/usePipeline.ts` | Opening a draft session is preview-only. There is no "continue recording" button that would append more chunks under the same `sessionId`. |
+| Recording duration cap | `src/lib/audio.ts` | `MAX_RECORDING_MS` (4 h) is exported but no longer enforced anywhere — the Record plugin that used to read it is gone. Either re-wire the cap into `usePipeline` or drop the constant. |
+
+## Export
+
+| Area | Files | Issue |
+| --- | --- | --- |
+| Cancellation / timeout | `src/services/audioExportService.ts`, `src/hooks/usePipeline.ts` | `encodeMp3` has no abort path. A stalled worker leaves `isExporting: true` indefinitely, with no UI for the user to cancel. |
+| Codec coverage | `src/workers/mp3Encoder.worker.ts` | Mediabunny decode requires the browser to support the recorded codec. Browsers that capture WebM/Opus but lack WebCodecs decode for it will fail export even though playback works. There is no preflight or graceful fallback. |
+| Export size guard | `src/lib/audio.ts`, `src/services/audioExportService.ts` | `MAX_EXPORT_DURATION_MS` (2 h) is exported but no longer consulted before encoding. Long takes can run into worker memory limits without warning. |
+
+## Transcription
+
+| Area | Files | Issue |
+| --- | --- | --- |
+| Recovery scope | `src/services/speechRecognitionService.ts` | Only `no-speech` is treated as recoverable. Network blips, `audio-capture`, and `service-not-allowed` end live transcription with no retry. |
+| Browser coverage | `src/services/speechRecognitionService.ts` | `SpeechRecognition` is Chromium-only today. The transcription node surfaces `unsupported` immediately on Safari/Firefox. |
+| Word timing | `src/services/speechRecognitionService.ts` | Final segments are timestamped from recorder elapsed time, not from the API. Any region timing is approximate. |
+
+## App-level
+
+| Area | Files | Issue |
+| --- | --- | --- |
+| Object URL lifecycle | `src/hooks/usePipeline.ts` | `pendingBlobUrlRef` is revoked on unmount and on the next take, but the `initialSession`-driven URL created inside the lazy state initializer is only revoked when the next take overwrites it. Worth re-auditing for repeated open/close cycles. |
+| Async fire-and-forget | `src/App.tsx`, `src/components/flow/PipelineFlow.tsx`, `src/hooks/usePipeline.ts` | Several `void`-discarded async calls (refresh, delete, finalize, recover) swallow their `Result.error` if it happens after the initial branch. Errors should keep being routed to `loadError` / the error boundary. |
+| URL routing fragility | `src/App.tsx` | `?session=<id>` parsing is hand-rolled around `pushState` / `popstate`. Adequate for one parameter; more app state would warrant a tiny router. |
+| Test realism | `src/test/*` | Storage and service tests use `fake-indexeddb` and a hand-rolled `MediaRecorder` stub. There are no UI tests for the flow chart or session library — `react-flow` interactions specifically are not exercised. |

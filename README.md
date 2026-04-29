@@ -1,23 +1,13 @@
-# wavesurfer.js Record Plugin Demo
+# Recorder pipeline
 
-React demo for the wavesurfer.js Record plugin with browser audio recording, MP3 export, live speech-to-text transcription, and offline chunk persistence.
+A self-documenting browser audio recorder. The UI is a [`react-flow`](https://reactflow.dev/) graph whose nodes are the actual stages of the pipeline — getUserMedia, MediaRecorder, an IndexedDB chunk queue, a Mediabunny → MP3 encoder, and live speech-to-text — each rendering its own controls and live state.
 
 Live demo: https://wavesurfer-record.pages.dev
-
-## Video demo
-
-https://github.com/user-attachments/assets/5afb48ab-0fac-48ca-ac63-5d7bd95087a9
-
-## Code walkthrough
-
-https://github.com/user-attachments/assets/cfb5be98-b2de-4a67-9caf-a214801cd29d
-
 
 ## Setup
 
 ```sh
 make install
-make css-types
 make run
 ```
 
@@ -33,30 +23,45 @@ If you edit `*.module.css`, run `make css-types` to refresh the committed declar
 
 ## Architecture
 
-For a code-oriented overview of the runtime flow, module boundaries, storage, and tooling, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+For a code-oriented overview of the data flow, storage model, and module boundaries, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
-- `wavesurfer.js` + Record plugin renders the live microphone waveform and owns recording state, including pause, resume, finish, and progress events.
-- The app opens on a recording session library. Users can start a new session or reopen an existing session; the recorder view is shown only after a session is selected.
-- Active sessions are reflected in the URL as `?session=<session-id>`, so refreshing or sharing the same browser URL can reopen a persisted local session.
-- Pressing `Finish` finalizes the active session. The finalized audio remains available for playback and MP3 export; another capture starts as a new session rather than overwriting or appending to the finalized take.
-- The UI exposes microphone processing constraints before recording starts: echo cancellation, noise filtering/noise suppression, and auto gain control. They are enabled by default and passed into `startRecording()`.
-- `record-data-available` is enabled with a 10 second `mediaRecorderTimeslice`; each blob chunk is stored in IndexedDB with an id, session id, sequence number, timestamp, MIME type, and size while the take is in progress.
-- The session library summary shows global cache totals. Inside the recorder, the Offline cache widget is scoped to the active session and clearing it removes only that session's cached chunks.
-- MP3 export sends the final browser recording to a Web Worker, where Mediabunny reads the media and `@mediabunny/mp3-encoder` writes the MP3. Encoding progress is streamed back to the UI. This is a browser-codec PoC, so export support varies by recording format and browser.
-- When a take is finalized, the completed session blob becomes the durable local artifact and the temporary per-session chunk cache is released to avoid duplicate storage.
-- Live transcription starts with recording and uses the browser's `SpeechRecognition` / `webkitSpeechRecognition` API. Interim results update the transcript display; finalized segments are appended, persisted on the active session, and drawn as timed regions over the waveform.
+## What the flow chart shows
+
+The app opens on a session library (`?session=<id>` deep links to a saved take, `?session=new` to a fresh recording). Inside the recorder view, five nodes render the pipeline:
+
+1. **Microphone — getUserMedia.** Device picker, processing toggles (`echoCancellation`, `noiseSuppression`, `autoGainControl`), inline error from `getUserMedia`.
+2. **MediaRecorder timeline.** Record / pause / resume / stop, animated elapsed-time bar, MIME type readout.
+3. **IndexedDB chunk queue.** Live FIFO of every `ondataavailable` event. Chunks are tagged with the active `sessionId` and persisted as the canonical bytes for the take — they are never cleared on export.
+4. **Mediabunny → MP3.** Bitrate / channels, "Download MP3", and a plain `<audio controls>` preview of the assembled blob. Encoding runs in a Web Worker.
+5. **Live speech-to-text.** Browser `SpeechRecognition`, running in parallel with the recorder. Final segments persist on the session.
+
+Edges animate while data is flowing: mic → recorder while live, recorder → queue while chunks are being persisted, queue → export while encoding, recorder → transcription while listening.
+
+## Result-based core
+
+Every async or IO surface returns `Result<T, AppError>` from `src/lib/result.ts` rather than throwing. `AppError` carries a structured `code` (`unsupported`, `permission-denied`, `in-use`, `storage`, `encoding`, `speech`, `unknown`, …) so callers branch on `result.ok` and `result.error.code` instead of inspecting exception messages.
+
+## Storage and crash recovery
+
+A single IndexedDB database `recording-sessions` holds two stores:
+
+- `sessions` — metadata only (`id`, `title`, `durationMs`, `size`, `mimeType`, `transcript[]`, `finalized`).
+- `chunks` — blob rows indexed by `sessionId`, written one per `ondataavailable` (5 s timeslice).
+
+Loading a session reads its metadata and assembles a virtual `Blob` from the chunks via reference-concat. The same blob feeds the `<audio>` preview and the MP3 worker.
+
+On every app mount `reconcileSessions()` promotes orphan chunks (no matching session row) into a `Recovered recording — …` draft and deletes empty failed-start drafts. A tab crash mid-recording shows up as a draft on next visit, limited only by the timeslice boundary — anything captured between the last 5 s emission and the crash is lost with the in-memory `MediaRecorder` buffer.
 
 ## Assumptions
 
-- The app targets modern Chromium, Safari, and Firefox versions with `MediaRecorder`, IndexedDB, Web Workers, and enough media codec support for Mediabunny/WebCodecs conversion.
-- Recording uses the browser-supported compressed capture MIME type, usually `audio/webm;codecs=opus`. MP3 is produced during export.
+- Targets modern Chromium, Safari, and Firefox versions with `MediaRecorder`, IndexedDB, Web Workers, and enough media codec support for Mediabunny / WebCodecs to read the recorded format.
+- Recording uses the browser-supported compressed capture MIME type (usually `audio/webm;codecs=opus`). MP3 is produced only at export time.
 - Browser support for `echoCancellation`, `noiseSuppression`, and `autoGainControl` is implementation-dependent; unsupported constraints may be ignored by the user agent.
-- The 4 hour duration limit is enforced from the Record plugin progress event.
 
 ## Limitations
 
-- MP3 export is intentionally client-side for this demo. Mediabunny can parse the container in the worker, but compressed audio decode still depends on browser/WebCodecs support for the recorded codec, usually WebM/Opus. Browsers that cannot decode the recorded format through that path will fail export even if playback works elsewhere in the app.
-- The Mediabunny MP3 path is not a production transcoding backend. Large recordings can still run into browser memory, CPU, worker, or codec-support limits, and the demo keeps an export-duration guard in code. A production system should use streaming or server-side transcoding for long recordings and broader codec coverage.
-- Offline support stores in-progress chunks locally and displays the queue. It does not yet include a background sync uploader or reassembly UI for partially completed sessions.
-- Live transcription depends on `SpeechRecognition`, which is only present in Chromium-family browsers today. Safari and Firefox will report the feature as unavailable. Region timing is estimated from recorder elapsed time because the browser API does not expose word-level timestamps. A real service integration would add upload retry policy, authentication, transcript status polling, and precise word timing on top.
+- MP3 export is intentionally client-side. Mediabunny parses the container in the worker, but compressed audio decode still depends on browser/WebCodecs support for the recorded codec. Browsers that cannot decode the recorded format through that path will fail export even if playback works elsewhere in the app.
+- The Mediabunny path is not a production transcoding backend. A real system would stream chunks to a server and transcode there — see the closing notes in `ARCHITECTURE.md`.
+- The 5 s `MediaRecorder` timeslice means crash recovery loses up to 5 s of trailing audio. Lower the value in `mediaRecorderService.ts` to tighten that window at the cost of more IndexedDB writes.
+- Live transcription depends on `SpeechRecognition`, only present in Chromium-family browsers today. Safari and Firefox report the feature as unavailable. Region timing is estimated from recorder elapsed time because the API does not expose word-level timestamps.
 - Browser microphone permissions and supported recording MIME types vary by browser.

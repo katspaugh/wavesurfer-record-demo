@@ -1,24 +1,8 @@
-/** Centralizes audio format limits, display helpers, downloads, and blob decoding. */
-const PREFERRED_MIME_TYPES = [
-  'audio/webm;codecs=opus',
-  'audio/webm',
-  'audio/mp4',
-  'audio/ogg;codecs=opus',
-]
-
+/** Format helpers for durations, byte counts, and downloading blobs. */
 export const MAX_RECORDING_MS = 4 * 60 * 60 * 1000
-export const CHUNK_TIMESLICE_MS = 10_000
 export const MAX_EXPORT_DURATION_MS = 2 * 60 * 60 * 1000
 
-export function getSupportedRecordingMimeType() {
-  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
-    return ''
-  }
-
-  return PREFERRED_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) ?? ''
-}
-
-export function formatDuration(ms: number) {
+export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
@@ -26,9 +10,8 @@ export function formatDuration(ms: number) {
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
 }
 
-export function formatBytes(bytes: number) {
+export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
-
   const units = ['B', 'KB', 'MB', 'GB']
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   const value = bytes / 1024 ** exponent
@@ -45,7 +28,5 @@ export function downloadBlob(blob: Blob, filename: string) {
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-
