@@ -38,7 +38,9 @@ let databasePromise: Promise<IDBDatabase> | null = null
 
 function openDatabase(): Promise<IDBDatabase> {
   if (databasePromise) return databasePromise
-  databasePromise = new Promise((resolve, reject) => {
+  // Drop the cached promise on rejection so a transient failure (blocked, quota, private mode)
+  // doesn't leave the app stuck reusing a poisoned promise forever.
+  databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onupgradeneeded = () => {
       const database = request.result
@@ -64,7 +66,11 @@ function openDatabase(): Promise<IDBDatabase> {
       chunksStore.createIndex('createdAt', 'createdAt', { unique: false })
     }
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+    request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed.'))
+    request.onblocked = () => reject(new Error('IndexedDB upgrade blocked by another tab.'))
+  }).catch((cause: unknown) => {
+    databasePromise = null
+    throw cause
   })
   return databasePromise
 }

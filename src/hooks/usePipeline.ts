@@ -1,6 +1,6 @@
 /** Orchestrates the recording pipeline: mic, recorder, IDB queue, export, transcription. */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { downloadBlob } from '../lib/audio'
+import { downloadBlob, MAX_EXPORT_DURATION_MS, MAX_RECORDING_MS } from '../lib/audio'
 import {
   createSession,
   deleteSession,
@@ -11,7 +11,7 @@ import {
   type SessionMeta,
   type StoredChunk,
 } from '../lib/db'
-import { isErr, type AppError } from '../lib/result'
+import { appError, isErr, type AppError } from '../lib/result'
 import { encodeMp3 } from '../services/audioExportService'
 import {
   CHUNK_TIMESLICE_MS,
@@ -188,7 +188,22 @@ export function usePipeline(options: UsePipelineOptions = {}) {
   }, [initialSession])
 
   useEffect(() => () => {
-    if (pendingBlobUrlRef.current) URL.revokeObjectURL(pendingBlobUrlRef.current)
+    // Unmount: stop everything still alive so navigating away doesn't leave the mic open
+    // or the recording timer ticking, and revoke any object URL we created.
+    recorderRef.current?.stop()
+    recorderRef.current = null
+    speechRef.current?.stop()
+    speechRef.current = null
+    if (tickRef.current !== null) {
+      window.clearInterval(tickRef.current)
+      tickRef.current = null
+    }
+    stopStream(streamRef.current)
+    streamRef.current = null
+    if (pendingBlobUrlRef.current) {
+      URL.revokeObjectURL(pendingBlobUrlRef.current)
+      pendingBlobUrlRef.current = null
+    }
   }, [])
 
   const stopTimer = useCallback(() => {
@@ -433,6 +448,19 @@ export function usePipeline(options: UsePipelineOptions = {}) {
     teardownStream()
   }, [pauseTimer, teardownStream, teardownTranscription])
 
+  // Auto-stop when the active recording reaches the configured cap so MediaRecorder
+  // can never run unbounded. Fires at most once per take when elapsedMs crosses the threshold.
+  useEffect(() => {
+    if (status !== 'recording') return
+    if (elapsedMs < MAX_RECORDING_MS) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRecorderError(appError(
+      'invalid-state',
+      `Recording stopped at the ${Math.round(MAX_RECORDING_MS / 60_000)}-minute cap.`,
+    ))
+    stopRecording()
+  }, [elapsedMs, status, stopRecording])
+
   const toggleProcessing = useCallback((option: MicProcessingOption) => {
     setMicProcessing((current) => ({ ...current, [option]: !current[option] }))
   }, [])
@@ -444,6 +472,14 @@ export function usePipeline(options: UsePipelineOptions = {}) {
 
   const exportMp3 = useCallback(async () => {
     if (!finalBlob) return
+    const durationMs = accumulatedMsRef.current
+    if (durationMs > MAX_EXPORT_DURATION_MS) {
+      setExportError(appError(
+        'invalid-state',
+        `MP3 export is capped at ${Math.round(MAX_EXPORT_DURATION_MS / 60_000)} minutes. Trim the recording before exporting.`,
+      ))
+      return
+    }
     setIsExporting(true)
     setExportError(null)
     setExportProgress(0)

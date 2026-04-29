@@ -1,7 +1,19 @@
 import { Handle, Position } from '@xyflow/react'
 import type { MicProcessingOption } from '../../services/micService'
 import type { PipelineState } from '../../hooks/usePipeline'
+import type { AppError } from '../../lib/result'
 import styles from './nodeStyles.module.css'
+
+function describeMicError(error: AppError): string {
+  switch (error.code) {
+    case 'permission-denied': return 'Permission denied'
+    case 'not-found': return 'No microphone found'
+    case 'in-use': return 'Microphone in use elsewhere'
+    case 'unsupported': return 'Browser does not support capture'
+    case 'aborted': return 'Capture interrupted'
+    default: return 'Microphone error'
+  }
+}
 
 const MIC_OPTIONS: { option: MicProcessingOption; label: string }[] = [
   { option: 'noiseSuppression', label: 'Noise filtering' },
@@ -36,7 +48,7 @@ export function MicNode({ data }: { data: MicNodeData }) {
         <span className={`${styles.statusDot} ${dotClass}`} />
         <span>
           {state.micError
-            ? 'Permission needed'
+            ? describeMicError(state.micError)
             : state.permissionGranted
               ? 'Stream ready'
               : 'Not requested yet'}

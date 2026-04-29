@@ -12,6 +12,7 @@ import {
   type SessionMeta,
 } from './lib/db'
 import type { AppError } from './lib/result'
+import { buildSessionUrl, FRESH_TOKEN, readSessionParam } from './lib/urlState'
 import { CHUNK_TIMESLICE_MS } from './services/mediaRecorderService'
 
 type AppView =
@@ -19,22 +20,21 @@ type AppView =
   | { kind: 'fresh' }
   | { kind: 'opened'; session: LoadedSession }
 
-const SESSION_PARAM = 'session'
-const FRESH_TOKEN = 'new'
-
-function readSessionParam(): string | null {
+function currentSessionParam(): string | null {
   if (typeof window === 'undefined') return null
-  return new URLSearchParams(window.location.search).get(SESSION_PARAM)
+  return readSessionParam(window.location.search)
 }
 
 function writeSessionParam(value: string | null, mode: 'push' | 'replace') {
   if (typeof window === 'undefined') return
-  const params = new URLSearchParams(window.location.search)
-  if (value) params.set(SESSION_PARAM, value)
-  else params.delete(SESSION_PARAM)
-  const search = params.toString()
-  const next = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`
-  if (next === `${window.location.pathname}${window.location.search}${window.location.hash}`) return
+  const next = buildSessionUrl(
+    window.location.pathname,
+    window.location.search,
+    window.location.hash,
+    value,
+  )
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
+  if (next === current) return
   if (mode === 'push') window.history.pushState(null, '', next)
   else window.history.replaceState(null, '', next)
 }
@@ -90,12 +90,12 @@ function App() {
         setLoadError(reconciled.error)
       }
       await refreshSessions()
-      await applySessionParam(readSessionParam())
+      await applySessionParam(currentSessionParam())
     })()
   }, [applySessionParam, refreshSessions])
 
   useEffect(() => {
-    const handler = () => void applySessionParam(readSessionParam())
+    const handler = () => void applySessionParam(currentSessionParam())
     window.addEventListener('popstate', handler)
     return () => window.removeEventListener('popstate', handler)
   }, [applySessionParam])
