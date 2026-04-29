@@ -4,6 +4,13 @@ A self-documenting browser audio recorder. The UI is a [`react-flow`](https://re
 
 Live demo: https://wavesurfer-record.pages.dev
 
+<img width="1445" height="1101" alt="585241656-0f9577fc-c8d8-4669-ac67-178801dd4bdb" src="https://github.com/user-attachments/assets/d02a5416-3108-4e15-b2b2-b65a29d23c0f" />
+
+## Architecture walkthrough
+
+https://github.com/user-attachments/assets/91ca5f66-4943-4db8-8c15-73ce87b88037
+
+
 ## Setup
 
 ```sh
