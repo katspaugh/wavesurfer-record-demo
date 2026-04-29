@@ -46,6 +46,7 @@ type Action =
   | { type: 'recorder-started' }
   | { type: 'recorder-paused' }
   | { type: 'recorder-resumed' }
+  | { type: 'recorder-stopping' }
   | { type: 'recorder-stopped'; blob: Blob; url: string; mimeType: string }
   | { type: 'chunk-enqueued'; chunk: ChunkMetadata; event: RecentQueueEvent }
   | { type: 'queue-snapshot'; chunks: ChunkMetadata[]; bytes: number; events: RecentQueueEvent[] }
@@ -89,6 +90,8 @@ function reducer(state: RecorderSliceState, action: Action): RecorderSliceState 
       return { ...state, status: 'paused' }
     case 'recorder-resumed':
       return { ...state, status: 'recording' }
+    case 'recorder-stopping':
+      return { ...state, status: 'stopping' }
     case 'recorder-stopped':
       return {
         ...state,
@@ -175,17 +178,22 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     })()
   }, [initialSession])
 
-  useEffect(() => () => {
-    unmountedRef.current = true
-    recorderRef.current?.stop()
-    recorderRef.current = null
-    if (tickRef.current !== null) {
-      window.clearInterval(tickRef.current)
-      tickRef.current = null
-    }
-    if (pendingBlobUrlRef.current) {
-      URL.revokeObjectURL(pendingBlobUrlRef.current)
-      pendingBlobUrlRef.current = null
+  useEffect(() => {
+    // Reset on every setup so React 18 StrictMode's synthetic remount doesn't leave
+    // the flag permanently set to true (which would silence the onstop dispatch).
+    unmountedRef.current = false
+    return () => {
+      unmountedRef.current = true
+      recorderRef.current?.stop()
+      recorderRef.current = null
+      if (tickRef.current !== null) {
+        window.clearInterval(tickRef.current)
+        tickRef.current = null
+      }
+      if (pendingBlobUrlRef.current) {
+        URL.revokeObjectURL(pendingBlobUrlRef.current)
+        pendingBlobUrlRef.current = null
+      }
     }
   }, [])
 
@@ -321,6 +329,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const stop = useCallback(() => {
     const handle = recorderRef.current
     if (!handle) return
+    // Dispatch BEFORE handle.stop(): real browsers fire onstop asynchronously, but tests'
+    // fake recorder fires it synchronously. Dispatching first lets the synchronous
+    // 'recorder-stopped' that follows correctly supersede this transient status.
+    dispatch({ type: 'recorder-stopping' })
     const result = handle.stop()
     if (isErr(result)) {
       dispatch({ type: 'recorder-error', error: result.error })
